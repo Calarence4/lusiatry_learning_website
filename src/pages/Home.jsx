@@ -24,8 +24,8 @@ const NewsCard = ({ item }) => (
 const BlogPostCard = ({ title, summary, tags, isHot }) => (
     <div className="bg-white/60 p-6 rounded-2xl shadow-sm border border-white/60 hover:bg-white/80 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer group will-change-transform">
         <div className="flex justify-between items-start">
-            <div className="flex-1"><h4 className="font-bold text-slate-700 group-hover:text-accent transition-colors text-xl mb-3">{title}</h4><p className="text-slate-500 text-sm line-clamp-2 mb-4 leading-relaxed">{summary}</p><div className="flex gap-2">{tags.map(tag => (<span key={tag} className="px-2.5 py-1 bg-white/70 text-slate-600 text-xs rounded-md font-medium border border-white/60 group-hover:text-indigo-600 transition-colors">{tag}</span>))}</div></div>
-            {isHot && <div className="bg-orange-50 text-orange-500 p-1.5 rounded-lg"><Star size={16} fill="currentColor" /></div>}
+            <div className="flex-1"><h4 className="font-bold text-slate-700 group-hover:text-accent transition-colors text-xl mb-3">{title}</h4><p className="text-slate-500 text-sm line-clamp-2 mb-4 leading-relaxed">{summary}</p><div className="flex gap-2">{tags.map(tag => (<span key={tag} className="px-2. 5 py-1 bg-white/70 text-slate-600 text-xs rounded-md font-medium border border-white/60 group-hover:text-indigo-600 transition-colors">{tag}</span>))}</div></div>
+            {isHot && <div className="bg-orange-50 text-orange-500 p-1. 5 rounded-lg"><Star size={16} fill="currentColor" /></div>}
         </div>
     </div>
 );
@@ -61,7 +61,7 @@ const TaskItemInner = ({ task, completed, onToggle, compact = false, isUrgent = 
                             {task.title}
                         </span>
                         {task.deadline && !isDone && (
-                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap flex items-center gap-1 
+                            <span className={`text-[10px] font-bold px-1. 5 py-0.5 rounded whitespace-nowrap flex items-center gap-1 
                  ${isUrgent ? 'bg-red-600 text-white animate-pulse' : 'text-red-500 bg-white/80 border border-white/60'}`}>
                                 {isUrgent && <Zap size={8} className="fill-current" />}
                                 {task.deadline}
@@ -80,7 +80,7 @@ const TaskItemInner = ({ task, completed, onToggle, compact = false, isUrgent = 
             {hasProgress && !isDone && !compact && (
                 <div className="flex items-center gap-2 mt-2 relative z-10">
                     <span className={`text-[10px] font-bold w-8 text-right ${isUrgent ? 'text-red-600' : 'text-indigo-600'}`}>{task.progress}%</span>
-                    <div className={`flex-1 h-1.5 rounded-full overflow-hidden ${isUrgent ? 'bg-red-200/50' : 'bg-slate-200/50'}`}>
+                    <div className={`flex-1 h-1. 5 rounded-full overflow-hidden ${isUrgent ? 'bg-red-200/50' : 'bg-slate-200/50'}`}>
                         <div className={`h-full rounded-full ${isUrgent ? 'bg-red-600' : 'bg-accent'}`} style={{ width: `${task.progress}%` }}></div>
                     </div>
                 </div>
@@ -133,13 +133,11 @@ export default function Home() {
     const toggleHomeTask = (id) => setCompleted(prev => ({ ...prev, [id]: true }));
 
     const renderTasks = () => {
-        // 1. 恭喜卡片 (自动撑满高度)
         if (isAllFinished) {
             return (
                 <motion.div
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
-                    // h-60 确保高度与正常任务网格高度近似 (~15rem)
                     className="w-full h-60 bg-gradient-to-br from-yellow-50 to-amber-50/50 rounded-3xl border border-yellow-100/50 flex flex-col items-center justify-center p-6 text-center shadow-sm relative overflow-hidden"
                 >
                     <div className="absolute inset-0 bg-yellow-200/10 animate-pulse rounded-3xl pointer-events-none"></div>
@@ -158,7 +156,6 @@ export default function Home() {
             );
         }
 
-        // 2. 正常任务网格
         const BASE_SLOTS = 4;
         const slotsToRender = Math.max(BASE_SLOTS, Math.min(visibleTasks.length > 8 ? 3 : visibleTasks.length, BASE_SLOTS));
         const shouldOverflow = visibleTasks.length > 8;
@@ -224,33 +221,29 @@ export default function Home() {
 
             <div className="relative z-10 w-full max-w-7xl mx-auto px-6 py-10 space-y-12 pb-32">
 
-                {/* Main Section: Left & Right Columns */}
-                <section className="grid grid-cols-1 lg:grid-cols-12 gap-8 min-h-[600px]">
-
-                    {/* 
-                       Left Column (col-span-8)
-                       关键修改：设为 flex flex-col h-full，使其占满 grid 的高度
-                    */}
-                    <div className="lg:col-span-8 flex flex-col h-full">
-
-                        {/* 1. Header (Shrink-0, 固定高度) */}
-                        <div className="mb-8 shrink-0 flex flex-col justify-start items-start">
-                            <div className="flex items-center gap-3 mb-2">
-                                <h1 className="text-4xl font-bold text-slate-800 drop-shadow-sm">早安, <span className="text-accent">Learner</span></h1>
-                                {warningState.isGlobalWarning && (
-                                    <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-500 text-white shadow-md">
-                                        <AlertTriangle size={14} className="animate-pulse" />
-                                        <span className="text-xs font-bold tracking-wide">紧急状态</span>
-                                    </div>
-                                )}
+                {/* 问候语区域 (独立于下方的左右栏) */}
+                <div className="flex flex-col justify-start items-start">
+                    <div className="flex items-center gap-3 mb-2">
+                        <h1 className="text-4xl font-bold text-slate-800 drop-shadow-sm">早安, <span className="text-accent">Learner</span></h1>
+                        {warningState.isGlobalWarning && (
+                            <div className="flex items-center gap-1. 5 px-3 py-1 rounded-full bg-red-500 text-white shadow-md">
+                                <AlertTriangle size={14} className="animate-pulse" />
+                                <span className="text-xs font-bold tracking-wide">紧急状态</span>
                             </div>
-                            <p className="text-slate-600 text-lg font-medium">{warningState.isGlobalWarning ? '检测到多个任务即将截止，请优先处理。' : '今天也是充满求知欲的一天。'}</p>
-                        </div>
+                        )}
+                    </div>
+                    <p className="text-slate-600 text-lg font-medium">{warningState.isGlobalWarning ? '检测到多个任务即将截止，请优先处理。' : '今天也是充满求知欲的一天。'}</p>
+                </div>
 
-                        {/* 2. Middle Section (Tasks or Congrats) */}
-                        {/* 关键修改：添加 mt-auto 占据头部多余空间，使任务卡片下沉 */}
-                        <div className="flex flex-col mb-8 shrink-0 transition-all duration-500 mt-auto">
-                            <div className="flex items-center gap-2 mb-3 shrink-0">
+                {/* 主内容区: 左右两栏 */}
+                <section className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+
+                    {/* 左侧容器：包含 今日待办 + 统计卡片 */}
+                    <div className="lg:col-span-8 flex flex-col justify-between h-full space-y-6">
+
+                        {/* 今日待办区域 */}
+                        <div>
+                            <div className="flex items-center gap-2 mb-3">
                                 <div className={`h-5 w-1 rounded-full transition-all duration-500 ${warningState.isGlobalWarning ? 'bg-red-500 shadow-sm animate-pulse' : 'bg-accent'}`}></div>
                                 <h3 className="font-bold text-slate-700">今日待办 ({visibleTasks.length})</h3>
                             </div>
@@ -267,21 +260,24 @@ export default function Home() {
                             )}
                         </div>
 
-                        {/* 3. Bottom Stats (Shrink-0, 自动靠下) */}
-                        {/* 关键修改：移除 mt-auto，减少与上方任务卡片的间距，紧贴任务卡片下方 */}
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 shrink-0">
+                        {/* 统计卡片区域 */}
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                             <div className="bg-white/60 p-4 rounded-xl border border-white/60 shadow-sm hover:bg-white/80 transition-all duration-200"><div className="text-sm text-slate-500 mb-1 font-medium">今日专注</div><div className="text-2xl font-bold text-slate-800">3h 42m</div></div>
                             <div className="bg-white/60 p-4 rounded-xl border border-white/60 shadow-sm hover:bg-white/80 transition-all duration-200"><div className="text-sm text-slate-500 mb-1 font-medium">知识库新增</div><div className="text-2xl font-bold text-slate-800">12 <span className="text-xs font-normal text-slate-500">篇</span></div></div>
                             <div className="bg-white/60 p-4 rounded-xl border border-white/60 shadow-sm hover:bg-white/80 transition-all duration-200"><div className="text-sm text-slate-500 mb-1 font-medium">待归档笔记</div><div className="text-2xl font-bold text-slate-800 text-orange-600">{pendingNotesCount} <span className="text-xs font-normal text-slate-500">篇</span></div></div>
                         </div>
                     </div>
 
-                    {/* Right Column (col-span-4) */}
-                    <div className="lg:col-span-4 h-full space-y-6 flex flex-col justify-end pb-0.5">
+                    {/* 右侧容器：包含 LearningRecorder + 待解决问题 */}
+                    <div className="lg:col-span-4 flex flex-col justify-between h-full space-y-6">
+
+                        {/* LearningRecorder */}
                         <LearningRecorder />
+
+                        {/* 待解决问题 */}
                         <div className="bg-white/60 rounded-2xl p-5 border border-white/60 shadow-sm hover:bg-white/80 transition-all duration-200">
                             <div className="flex items-center justify-between mb-3"><h4 className="font-bold text-slate-700 flex items-center gap-2"><HelpCircle className="text-red-500" size={18} /> 待解决问题</h4><span className="bg-red-50 text-red-600 border border-red-100 px-2 py-0.5 rounded-full text-xs font-bold">{pendingQuestionsCount}</span></div>
-                            <ul className="space-y-3 text-sm text-slate-600 mb-4">{recentQuestions.map(q => (<li key={q.id} className="flex gap-2 items-start"><span className="text-red-400 mt-1 font-bold">?</span><span className={`line-clamp-1 ${q.status === 'resolved' ? 'text-slate-400 line-through' : ''}`}>{q.title}</span></li>))}</ul>
+                            <ul className="space-y-3 text-sm text-slate-600 mb-4">{recentQuestions.map(q => (<li key={q.id} className="flex gap-2 items-start"><span className="text-red-400 mt-1 font-bold">? </span><span className={`line-clamp-1 ${q.status === 'resolved' ? 'text-slate-400 line-through' : ''}`}>{q.title}</span></li>))}</ul>
                             <Link to="/questions" className="block w-full text-center py-2 text-xs font-bold text-slate-600 bg-white/50 rounded-lg hover:bg-white/80 transition-colors">进入问题板块解决</Link>
                         </div>
                     </div>

@@ -24,7 +24,7 @@ const Navbar = () => (
         <div className="flex items-center gap-8">
             <Link to="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
                 <div className="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center text-white font-bold shadow-lg shadow-slate-200">L</div>
-                <span className="text-lg font-bold tracking-tight text-slate-800">Lumina</span>
+                <span className="text-lg font-bold tracking-tight text-slate-800">Lusiatry</span>
             </Link>
 
             <div className="hidden md:flex items-center gap-1">

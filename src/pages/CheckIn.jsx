@@ -118,16 +118,16 @@ export default function CheckIn() {
 
             <div className="relative z-10 grid grid-cols-12 gap-6 h-[calc(100vh-120px)]">
 
-                <div className="col-span-5 bg-white/60 backdrop-blur-md rounded-3xl shadow-sm border border-white/60 p-6 flex flex-col">
+                <div className="col-span-5 bg-white/60 backdrop-blur-md rounded-3xl shadow-sm border border-white/60 p-6 flex flex-col overflow-visible">
                     <div className="flex justify-between items-end mb-6"><h2 className="text-3xl font-bold text-slate-800">{format(selectedDate, 'yyyy.MM')}</h2><div className="flex gap-3 text-[10px] font-bold uppercase tracking-wider"><div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-emerald-500"></div>Done</div><div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-red-500"></div>Miss</div><div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-indigo-500"></div>Plan</div></div></div>
-                    <div className="grid grid-cols-7 gap-2 flex-1 content-start overflow-y-auto custom-scrollbar pr-1">
+                    <div className="grid grid-cols-7 gap-2 flex-1 content-start overflow-y-auto custom-scrollbar pr-2 overflow-visible">
                         {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => <div key={d} className="text-center text-xs font-bold text-slate-400 uppercase mb-1">{d}</div>)}
                         {daysInMonth.map(day => {
                             const isSelected = isSameDay(day, selectedDate);
                             const dayStr = format(day, 'yyyy-MM-dd');
                             const dayTasks = getTasksForDay(day);
                             return (
-                                <div key={day.toString()} onClick={() => setSelectedDate(day)} className={`relative h-20 rounded-xl border flex flex-col items-center justify-center cursor-pointer transition-all duration-200 ${getDayStatusClass(day)} ${isSelected ? 'ring-2 ring-offset-2 ring-slate-500 z-10 shadow-lg scale-[1.02]' : 'hover:border-indigo-200'}`}>
+                                <div key={day.toString()} onClick={() => setSelectedDate(day)} className={`relative h-20 rounded-xl border flex flex-col items-center justify-center cursor-pointer transition-all duration-200 ${getDayStatusClass(day)} ${isSelected ? 'ring-2 ring-inset ring-slate-500 z-10 shadow-lg scale-[1.02]' : 'hover:border-indigo-200'}`}>
                                     <span className="text-lg font-bold">{format(day, 'd')}</span>
                                     <div className="flex gap-0.5 mt-1 flex-wrap justify-center px-1">{dayTasks.slice(0, 4).map((t, i) => (<div key={i} className={`w-1 h-1 rounded-full ${completedLog[`${t.id}-${dayStr}`] ? 'bg-current opacity-40' : 'bg-current'}`}></div>))}</div>
                                 </div>
@@ -163,7 +163,7 @@ export default function CheckIn() {
 
                             <div className="flex gap-2">
                                 <div className="relative flex-1">
-                                    <input list="simple-checkin-subjects" className="w-full bg-slate-800/50 border-slate-700/50 rounded-lg p-2 pl-8 text-sm text-white outline-none focus:bg-slate-800 focus:border-indigo-500 transition-all" placeholder="大分类" value={newTask.category} onChange={e => setNewTask({ ...newTask, category: e.target.value })} />
+                                    <input list="simple-checkin-subjects" className="w-full bg-slate-800/50 border-slate-700/50 rounded-lg p-2 pl-8 text-sm text-white outline-none focus:bg-slate-800 focus:border-indigo-500 transition-all" placeholder="学科" value={newTask.category} onChange={e => setNewTask({ ...newTask, category: e.target.value })} />
                                     <Tag size={12} className="absolute left-2.5 top-3 text-slate-500" /><datalist id="simple-checkin-subjects">{topLevelSuggestions.map((sub, i) => <option key={i} value={sub} />)}</datalist>
                                 </div>
                                 <div className="relative w-24">
