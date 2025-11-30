@@ -1,11 +1,31 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import { useNavigate } from 'react-router-dom';
-import { flattenFiles, MOCK_FILE_TREE } from '../data/mockDb';
+import { fileTreeApi } from '../api';
+
+const flattenFiles = (nodes, result = []) => {
+    nodes.forEach(node => {
+        if (node.type === 'file') result.push(node);
+        if (node.children?.length > 0) flattenFiles(node.children, result);
+    });
+    return result;
+};
 
 export default function WikiMarkdown({ content }) {
     const navigate = useNavigate();
-    const allFiles = flattenFiles(MOCK_FILE_TREE);
+    const [allFiles, setAllFiles] = useState([]);
+
+    useEffect(() => {
+        async function fetchFileTree() {
+            try {
+                const tree = await fileTreeApi.getTree();
+                setAllFiles(flattenFiles(tree || []));
+            } catch (err) {
+                console.error('加载文件树失败:', err);
+            }
+        }
+        fetchFileTree();
+    }, []);
 
     const renderContent = (text) => {
         const regex = /\[\[(.*?)\]\]/g;

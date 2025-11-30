@@ -1,26 +1,103 @@
-import React, { useState } from 'react';
-import { HelpCircle, CheckCircle2, Circle, Search, Filter, MessageSquare, ArrowLeft } from 'lucide-react';
-import { MOCK_QUESTIONS } from '../data/mockDb';
+import React, { useState, useEffect } from 'react';
+import { HelpCircle, CheckCircle2, Circle, MessageSquare, ArrowLeft } from 'lucide-react';
 import { Link } from 'react-router-dom';
+// ============================================
+// 【删除】删除以下这行
+// ============================================
+// import { MOCK_QUESTIONS } from '../data/mockDb';
+
+// ============================================
+// 【新增】引入 API
+// ============================================
+import { problemsApi } from '../api';
 
 export default function Questions() {
-  const [questions, setQuestions] = useState(MOCK_QUESTIONS);
-  const [filter, setFilter] = useState('all'); // all | unresolved | resolved
+  // ============================================
+  // 【修改】questions 初始为空数组
+  // ============================================
+  const [questions, setQuestions] = useState([]);
+  const [filter, setFilter] = useState('all');
 
-  const toggleStatus = (id) => {
-    setQuestions(questions.map(q =>
-      q.id === id
-        ? { ...q, status: q.status === 'unresolved' ? 'resolved' : 'unresolved' }
-        : q
-    ));
+  // ============================================
+  // 【新增】新的状态变量
+  // ============================================
+  const [loading, setLoading] = useState(true);
+
+  // ============================================
+  // 【新增】加载数据
+  // ============================================
+  useEffect(() => {
+    async function fetchQuestions() {
+      try {
+        setLoading(true);
+        const data = await problemsApi.getAll();
+        setQuestions(data || []);
+      } catch (err) {
+        console.error('加载问题列表失败:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchQuestions();
+  }, []);
+
+  // ============================================
+  // 【修改】toggleStatus 调用 API
+  // ============================================
+  const toggleStatus = async (id) => {
+    const question = questions.find(q => q.id === id);
+    if (!question) return;
+
+    try {
+      if (question.is_solved) {
+        await problemsApi.unsolve(id);
+      } else {
+        await problemsApi.solve(id);
+      }
+
+      setQuestions(questions.map(q =>
+        q.id === id
+          ? { ...q, is_solved: !q.is_solved }
+          : q
+      ));
+    } catch (err) {
+      console.error('切换状态失败:', err);
+      alert('操作失败: ' + err.message);
+    }
   };
 
+  // ============================================
+  // 【修改】filteredQuestions 使用新字段
+  // ============================================
   const filteredQuestions = questions.filter(q => {
     if (filter === 'all') return true;
-    return q.status === filter;
+    if (filter === 'unresolved') return !q.is_solved;
+    if (filter === 'resolved') return q.is_solved;
+    return true;
   });
 
-  const unresolvedCount = questions.filter(q => q.status === 'unresolved').length;
+  // ============================================
+  // 【修改】unresolvedCount 使用新字段
+  // ============================================
+  const unresolvedCount = questions.filter(q => !q.is_solved).length;
+
+  // ============================================
+  // 【新增】加载状态
+  // ============================================
+  if (loading) {
+    return (
+      <div className="relative w-full min-h-screen text-slate-800 font-sans p-6 flex flex-col">
+        <div className="fixed inset-0 z-0 bg-slate-50/40"></div>
+        <div className="relative z-10 flex items-center justify-center h-screen">
+          <div className="animate-pulse space-y-4 w-full max-w-md">
+            <div className="h-8 bg-slate-200 rounded w-1/3"></div>
+            <div className="h-32 bg-slate-200 rounded"></div>
+            <div className="h-32 bg-slate-200 rounded"></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative w-full min-h-screen text-slate-800 font-sans p-6 flex flex-col">
@@ -64,8 +141,8 @@ export default function Questions() {
                 key={f}
                 onClick={() => setFilter(f)}
                 className={`flex items-center justify-between px-4 py-3 rounded-xl cursor-pointer transition-all border ${filter === f
-                    ? 'bg-slate-900/90 backdrop-blur-xl text-white shadow-lg border-slate-700'
-                    : 'text-slate-600 hover:bg-white/50 border-transparent hover:border-white/40'
+                  ? 'bg-slate-900/90 backdrop-blur-xl text-white shadow-lg border-slate-700'
+                  : 'text-slate-600 hover:bg-white/50 border-transparent hover:border-white/40'
                   }`}
               >
                 <span className="capitalize font-medium">{f}</span>
@@ -88,35 +165,46 @@ export default function Questions() {
             )}
 
             {filteredQuestions.map(q => (
-              <div key={q.id} className={`bg-white/60 backdrop-blur-md p-6 rounded-2xl border transition-all group ${q.status === 'resolved' ? 'border-white/40 opacity-60 grayscale-[0.5]' : 'border-white/60 shadow-sm hover:border-red-200/50 hover:shadow-md hover:bg-white/80'}`}>
+              <div
+                key={q.id}
+                className={`bg-white/60 backdrop-blur-md p-6 rounded-2xl border transition-all group ${q.is_solved ? 'border-white/40 opacity-60 grayscale-[0.5]' : 'border-white/60 shadow-sm hover:border-red-200/50 hover:shadow-md hover:bg-white/80'}`}
+              >
                 <div className="flex items-start gap-4">
                   <div
                     onClick={() => toggleStatus(q.id)}
                     className="mt-1 cursor-pointer hover:scale-110 transition-transform"
-                    title={q.status === 'resolved' ? "标记为未解决" : "标记为已解决"}
+                    title={q.is_solved ? "标记为未解决" : "标记为已解决"}
                   >
-                    {q.status === 'resolved' ? <CheckCircle2 className="text-emerald-500" size={24} /> : <Circle className="text-slate-400 hover:text-red-400" size={24} />}
+                    {q.is_solved
+                      ? <CheckCircle2 className="text-emerald-500" size={24} />
+                      : <Circle className="text-slate-400 hover:text-red-400" size={24} />
+                    }
                   </div>
 
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
                       <span className="text-xs font-bold text-slate-500 bg-white/50 border border-white/50 px-2 py-1 rounded uppercase tracking-wider">
-                        {q.subject || 'General'}
+                        {q.subject_name || 'General'}
                       </span>
                       <span className="text-xs text-slate-400 font-medium">
-                        {new Date(q.createdAt).toLocaleDateString()}
+                        {q.date ? new Date(q.date).toLocaleDateString() : ''}
                       </span>
                     </div>
-                    <h3 className={`text-lg font-bold mb-2 ${q.status === 'resolved' ? 'text-slate-500 line-through' : 'text-slate-800'}`}>
-                      {q.title}
+                    <h3 className={`text-lg font-bold mb-2 ${q.is_solved ? 'text-slate-500 line-through' : 'text-slate-800'}`}>
+                      {q.problem}
                     </h3>
-                    {q.solution && (
+                    {q.content && (
+                      <p className="text-sm text-slate-600 mb-3">
+                        {q.content}
+                      </p>
+                    )}
+                    {q.is_solved && q.related_draft_id && (
                       <div className="bg-emerald-50/60 border border-emerald-100/50 p-3 rounded-lg text-sm text-emerald-800 mt-3 flex gap-2">
-                        <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
-                        <div>{q.solution}</div>
+                        <CheckCircle2 size={16} className="mt-0. 5 shrink-0" />
+                        <div>已关联草稿笔记</div>
                       </div>
                     )}
-                    {q.status === 'unresolved' && (
+                    {!q.is_solved && (
                       <div className="mt-3 flex gap-2">
                         <button className="text-xs font-bold text-indigo-500 hover:text-indigo-600 flex items-center gap-1 px-2 py-1 rounded hover:bg-indigo-50 transition-colors">
                           <MessageSquare size={12} /> 添加解决思路

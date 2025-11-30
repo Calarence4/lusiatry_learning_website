@@ -1,10 +1,19 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { PieChart, Pie, Sector, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { motion } from 'framer-motion';
 import { ArrowLeft, BookOpen, Clock, Award, Trophy as TrophyIcon, TrendingUp } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { MOCK_TASKS_DATA } from '../data/mockDb';
-import { isWithinInterval, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, parseISO, format, addDays, isSameDay, getDay, differenceInCalendarDays } from 'date-fns';
+// ============================================
+// 【删除】删除以下这行
+// ============================================
+// import { MOCK_TASKS_DATA } from '../data/mockDb';
+
+// ============================================
+// 【新增】引入 API
+// ============================================
+import { studyTimeApi, tasksApi } from '../api';
+
+import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, format, addDays, getDay, differenceInCalendarDays } from 'date-fns';
 
 // === 1. 定义大类映射关系 ===
 const SUBJECT_MAPPING = {
@@ -23,11 +32,11 @@ const SUBJECT_MAPPING = {
 
 // === 2. 定义大类的颜色 ===
 const MAJOR_SUBJECT_COLORS = {
-    '计算机': '#6366f1', // Indigo
-    '设计': '#f59e0b',   // Amber
-    '语言': '#10b981',   // Emerald
-    '音乐': '#f43f5e',   // Rose
-    '其他': '#94a3b8'    // Slate
+    '计算机': '#6366f1',
+    '设计': '#f59e0b',
+    '语言': '#10b981',
+    '音乐': '#f43f5e',
+    '其他': '#94a3b8'
 };
 
 const renderActiveShape = (props) => {
@@ -88,13 +97,13 @@ const LearningPieChart = ({ data, totalHours }) => {
                         <div
                             key={item.name}
                             onMouseEnter={() => setActiveIndex(index)}
-                            className={`flex items-center justify-between text-sm p-2.5 rounded-xl transition-all cursor-pointer border ${activeIndex === index
-                                    ? 'bg-white shadow-sm border-slate-200 scale-[1.02]'
-                                    : 'bg-slate-50/50 border-transparent hover:bg-white hover:border-slate-100'
+                            className={`flex items-center justify-between text-sm p-2. 5 rounded-xl transition-all cursor-pointer border ${activeIndex === index
+                                ? 'bg-white shadow-sm border-slate-200 scale-[1.02]'
+                                : 'bg-slate-50/50 border-transparent hover:bg-white hover:border-slate-100'
                                 }`}
                         >
                             <div className="flex items-center gap-2">
-                                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }}></div>
+                                <div className="w-2. 5 h-2.5 rounded-full" style={{ backgroundColor: item.color }}></div>
                                 <span className={`font-medium ${activeIndex === index ? 'text-slate-800' : 'text-slate-500'}`}>{item.name}</span>
                             </div>
                             <span className="text-slate-400 font-mono text-xs font-bold">{item.value.toFixed(1)}h</span>
@@ -116,36 +125,68 @@ const getFirstMondayOfMonth = (date) => {
 export default function Dashboard() {
     const [timeRange, setTimeRange] = useState('week');
 
+    // ============================================
+    // 【新增】新的状态变量
+    // ============================================
+    const [loading, setLoading] = useState(true);
+    const [studyTimeLogs, setStudyTimeLogs] = useState([]);
+    const [completedTasksCount, setCompletedTasksCount] = useState(0);
+
+    // ============================================
+    // 【新增】加载数据
+    // ============================================
+    useEffect(() => {
+        async function fetchData() {
+            try {
+                setLoading(true);
+                const now = new Date();
+                let startDate, endDate;
+
+                if (timeRange === 'week') {
+                    startDate = format(startOfWeek(now, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+                    endDate = format(endOfWeek(now, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+                } else if (timeRange === 'month') {
+                    startDate = format(startOfMonth(now), 'yyyy-MM-dd');
+                    endDate = format(endOfMonth(now), 'yyyy-MM-dd');
+                } else {
+                    startDate = format(startOfYear(now), 'yyyy-MM-dd');
+                    endDate = format(endOfYear(now), 'yyyy-MM-dd');
+                }
+
+                const [logsData, tasksData] = await Promise.all([
+                    studyTimeApi.getAll({ start_date: startDate, end_date: endDate }),
+                    tasksApi.getAll()
+                ]);
+
+                setStudyTimeLogs(logsData || []);
+                // 简单统计已完成任务数
+                setCompletedTasksCount((tasksData || []).filter(t => t.is_longterm).length);
+            } catch (err) {
+                console.error('加载数据失败:', err);
+            } finally {
+                setLoading(false);
+            }
+        }
+        fetchData();
+    }, [timeRange]);
+
+    // ============================================
+    // 【修改】计算数据使用 studyTimeLogs
+    // ============================================
     const { pieData, trendData, totalHours, totalKnowledgePoints } = useMemo(() => {
         const now = new Date();
-        let filterStart, filterEnd;
 
-        if (timeRange === 'week') {
-            filterStart = startOfWeek(now, { weekStartsOn: 1 });
-            filterEnd = endOfWeek(now, { weekStartsOn: 1 });
-        } else if (timeRange === 'month') {
-            const firstMonday = getFirstMondayOfMonth(now);
-            filterStart = firstMonday;
-            // 修改：只覆盖4周 (28天)
-            filterEnd = addDays(firstMonday, 28);
-        } else {
-            filterStart = startOfYear(now);
-            filterEnd = endOfYear(now);
-        }
+        // 计算总时长（分钟转小时）
+        const sumMinutes = studyTimeLogs.reduce((acc, cur) => acc + (cur.duration || 0), 0);
+        const sumHours = sumMinutes / 60;
 
-        const filteredTasks = MOCK_TASKS_DATA.filter(task => {
-            return isWithinInterval(parseISO(task.startDate), { start: filterStart, end: filterEnd });
-        });
-
-        const sumHours = filteredTasks.reduce((acc, cur) => acc + (cur.duration || 0), 0);
-        const sumPoints = filteredTasks.filter(t => t.progress === 100).length;
-
+        // 按学科分组
         const categoryMap = {};
-        filteredTasks.forEach(task => {
-            const rawCat = task.category || '其他';
-            const majorSubject = SUBJECT_MAPPING[rawCat] || '其他';
+        studyTimeLogs.forEach(log => {
+            const subjectName = log.subject_name || '其他';
+            const majorSubject = SUBJECT_MAPPING[subjectName] || '其他';
             if (!categoryMap[majorSubject]) categoryMap[majorSubject] = 0;
-            categoryMap[majorSubject] += (task.duration || 0);
+            categoryMap[majorSubject] += (log.duration || 0) / 60;
         });
 
         const calculatedPieData = Object.keys(categoryMap).map(cat => ({
@@ -158,33 +199,38 @@ export default function Dashboard() {
             calculatedPieData.push({ name: '无数据', value: 0.01, color: '#e2e8f0' });
         }
 
+        // 趋势数据
         let calculatedTrendData = [];
         const dataMap = {};
 
         if (timeRange === 'week') {
             const weekOrder = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-            filteredTasks.forEach(task => {
-                const day = format(parseISO(task.startDate), 'EEE');
-                if (!dataMap[day]) dataMap[day] = 0;
-                dataMap[day] += (task.duration || 0);
+            const dayMapping = { 1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri', 6: 'Sat', 0: 'Sun' };
+
+            studyTimeLogs.forEach(log => {
+                if (!log.log_date) return;
+                const date = new Date(log.log_date);
+                const dayKey = dayMapping[date.getDay()];
+                if (!dataMap[dayKey]) dataMap[dayKey] = 0;
+                dataMap[dayKey] += (log.duration || 0) / 60;
             });
             calculatedTrendData = weekOrder.map(day => ({ label: day, hours: dataMap[day] || 0 }));
 
         } else if (timeRange === 'month') {
-            // 修改：只展示 Week 1 - Week 4
             const firstMonday = getFirstMondayOfMonth(now);
             const weeks = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
 
-            filteredTasks.forEach(task => {
-                const taskDate = parseISO(task.startDate);
-                const diffDays = differenceInCalendarDays(taskDate, firstMonday);
+            studyTimeLogs.forEach(log => {
+                if (!log.log_date) return;
+                const logDate = new Date(log.log_date);
+                const diffDays = differenceInCalendarDays(logDate, firstMonday);
 
                 if (diffDays >= 0) {
                     const weekIndex = Math.floor(diffDays / 7);
-                    if (weekIndex < 4) { // 只统计前4周
+                    if (weekIndex < 4) {
                         const key = `Week ${weekIndex + 1}`;
                         if (!dataMap[key]) dataMap[key] = 0;
-                        dataMap[key] += (task.duration || 0);
+                        dataMap[key] += (log.duration || 0) / 60;
                     }
                 }
             });
@@ -192,10 +238,13 @@ export default function Dashboard() {
 
         } else {
             const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-            filteredTasks.forEach(task => {
-                const monthStr = format(parseISO(task.startDate), 'MMM');
+
+            studyTimeLogs.forEach(log => {
+                if (!log.log_date) return;
+                const date = new Date(log.log_date);
+                const monthStr = months[date.getMonth()];
                 if (!dataMap[monthStr]) dataMap[monthStr] = 0;
-                dataMap[monthStr] += (task.duration || 0);
+                dataMap[monthStr] += (log.duration || 0) / 60;
             });
             calculatedTrendData = months.map(m => ({ label: m, hours: dataMap[m] || 0 }));
         }
@@ -204,9 +253,27 @@ export default function Dashboard() {
             pieData: calculatedPieData,
             trendData: calculatedTrendData,
             totalHours: sumHours,
-            totalKnowledgePoints: sumPoints
+            totalKnowledgePoints: completedTasksCount
         };
-    }, [timeRange]);
+    }, [studyTimeLogs, timeRange, completedTasksCount]);
+
+    // ============================================
+    // 【新增】加载状态
+    // ============================================
+    if (loading) {
+        return (
+            <div className="relative w-full min-h-screen text-slate-800 font-sans">
+                <div className="fixed inset-0 z-0 bg-slate-50/40"></div>
+                <div className="relative z-10 w-full max-w-6xl mx-auto px-6 py-10">
+                    <div className="animate-pulse space-y-6">
+                        <div className="h-10 bg-slate-200 rounded w-1/3"></div>
+                        <div className="h-64 bg-slate-200 rounded"></div>
+                        <div className="h-64 bg-slate-200 rounded"></div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="relative w-full min-h-screen text-slate-800 font-sans">
@@ -231,8 +298,8 @@ export default function Dashboard() {
                                 key={range}
                                 onClick={() => setTimeRange(range)}
                                 className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${timeRange === range
-                                        ? 'bg-white text-indigo-600 shadow-sm'
-                                        : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'
+                                    ? 'bg-white text-indigo-600 shadow-sm'
+                                    : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'
                                     }`}
                             >
                                 {range === 'week' ? '本周' : range === 'month' ? '本月' : '本年'}
@@ -256,7 +323,7 @@ export default function Dashboard() {
                     </motion.div>
 
                     <div className="space-y-6">
-                        <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} delay={0.1} className="bg-white/60 backdrop-blur-md p-6 rounded-3xl border border-white/60 shadow-sm">
+                        <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="bg-white/60 backdrop-blur-md p-6 rounded-3xl border border-white/60 shadow-sm">
                             <div className="flex justify-between items-start mb-4">
                                 <div className="p-2 bg-emerald-100 rounded-lg text-emerald-600"><Clock size={20} /></div>
                                 <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">统计中</span>
@@ -265,19 +332,21 @@ export default function Dashboard() {
                             <div className="text-sm text-slate-500">本{timeRange === 'week' ? '周' : timeRange === 'month' ? '月' : '年'}累计学习</div>
                         </motion.div>
 
-                        <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} delay={0.2} className="bg-white/60 backdrop-blur-md p-6 rounded-3xl border border-white/60 shadow-sm">
+                        <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="bg-white/60 backdrop-blur-md p-6 rounded-3xl border border-white/60 shadow-sm">
                             <div className="flex justify-between items-start mb-4">
                                 <div className="p-2 bg-orange-100 rounded-lg text-orange-600"><Award size={20} /></div>
                             </div>
                             <div className="text-3xl font-bold text-slate-800 mb-1">{totalKnowledgePoints}</div>
-                            <div className="text-sm text-slate-500">已完成任务数</div>
+                            <div className="text-sm text-slate-500">周期计划数</div>
                         </motion.div>
 
-                        <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} delay={0.3} className="bg-gradient-to-br from-indigo-500 to-purple-600 p-6 rounded-3xl shadow-lg text-white relative overflow-hidden">
+                        <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="bg-gradient-to-br from-indigo-500 to-purple-600 p-6 rounded-3xl shadow-lg text-white relative overflow-hidden">
                             <div className="relative z-10">
                                 <div className="text-lg font-bold mb-1">保持专注!</div>
-                                <p className="text-indigo-100 text-sm mb-4">数据统计基于已录入的任务。</p>
-                                <button className="bg-white text-indigo-600 px-4 py-2 rounded-xl text-xs font-bold shadow-sm hover:bg-indigo-50 transition-colors">去打卡</button>
+                                <p className="text-indigo-100 text-sm mb-4">数据统计基于已录入的学习时间。</p>
+                                <Link to="/checkin" className="inline-block bg-white text-indigo-600 px-4 py-2 rounded-xl text-xs font-bold shadow-sm hover:bg-indigo-50 transition-colors">
+                                    去打卡
+                                </Link>
                             </div>
                             <div className="absolute right-0 bottom-0 opacity-10 transform translate-x-4 translate-y-4">
                                 <TrophyIcon size={120} />
@@ -286,7 +355,7 @@ export default function Dashboard() {
                     </div>
 
                     <motion.div
-                        initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} delay={0.4}
+                        initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
                         className="lg:col-span-3 bg-white/60 backdrop-blur-md p-8 rounded-3xl border border-white/60 shadow-sm"
                     >
                         <div className="flex items-center gap-2 mb-6">
@@ -304,6 +373,7 @@ export default function Dashboard() {
                                     <Tooltip
                                         cursor={{ fill: '#f1f5f9', radius: 4 }}
                                         contentStyle={{ backgroundColor: '#fff', borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                        formatter={(value) => [`${value.toFixed(1)}h`, '学习时长']}
                                     />
                                     <Bar dataKey="hours" fill="#6366f1" radius={[6, 6, 0, 0]} barSize={40} />
                                 </BarChart>

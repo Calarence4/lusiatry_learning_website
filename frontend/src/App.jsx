@@ -2,27 +2,28 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Layout from './components/Layout';
 import Home from './pages/Home';
-import Dashboard from './pages/Dashboard';
-import KnowledgeBase from './pages/KnowledgeBase';
-import News from './pages/News';
 import CheckIn from './pages/CheckIn';
-import Questions from './pages/Questions'; // 新增引入
+import Questions from './pages/Questions';
+import KnowledgeBase from './pages/KnowledgeBase';
+import Dashboard from './pages/Dashboard';
+import News from './pages/News';
 
-function App() {
+// 如果有 News 页面
+// import News from './pages/News';
+
+export default function App() {
   return (
     <Router>
       <Layout>
         <Routes>
           <Route path="/" element={<Home />} />
-          <Route path="/news" element={<News />} />
           <Route path="/checkin" element={<CheckIn />} />
-          <Route path="/questions" element={<Questions />} /> {/* 新增路由 */}
-          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/questions" element={<Questions />} />
           <Route path="/knowledge" element={<KnowledgeBase />} />
-          <Route path="*" element={<div className="text-center mt-20 text-slate-400">404 Not Found</div>} />
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/news" element={<News />} />
         </Routes>
       </Layout>
     </Router>
   );
 }
-export default App;
