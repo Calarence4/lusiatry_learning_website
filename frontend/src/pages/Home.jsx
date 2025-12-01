@@ -36,7 +36,6 @@ const TaskItemInner = ({ task, completed, onToggle, compact = false, isUrgent = 
     }
 
     const isDone = completed[task.id];
-    const hasProgress = nullress !== null;
 
     return (
         <motion.div
@@ -57,30 +56,21 @@ const TaskItemInner = ({ task, completed, onToggle, compact = false, isUrgent = 
                             {task.name}
                         </span>
                         {task.ddl_time && !isDone && (
-                            <span className={`text-[10px] font-bold px-1. 5 py-0.5 rounded whitespace-nowrap flex items-center gap-1 
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap flex items-center gap-1 
                  ${isUrgent ? 'bg-red-600 text-white animate-pulse' : 'text-red-500 bg-white/80 border border-white/60'}`}>
                                 {isUrgent && <Zap size={8} className="fill-current" />}
-                                {task.ddl_time}
+                                {task.ddl_time.slice(0, 5)}
                             </span>
                         )}
                     </div>
-                    {hasProgress && !compact && (
+                    {task.subject_name && !compact && (
                         <div className={`flex items-center gap-1 text-[10px] mt-1 ${isUrgent ? 'text-red-600 font-medium' : 'text-slate-500'}`}>
-                            <CalendarRange size={10} /> <span>{task.subject}</span>
+                            <CalendarRange size={10} /> <span>{task.subject_name}</span>
                         </div>
                     )}
                 </div>
                 {isDone ? <CheckCircle2 className="text-emerald-500 shrink-0" size={compact ? 16 : 20} /> : <Circle className={`${isUrgent ? 'text-red-500' : 'text-slate-400/80'} shrink-0`} size={compact ? 16 : 20} />}
             </div>
-
-            {hasProgress && !isDone && !compact && (
-                <div className="flex items-center gap-2 mt-2 relative z-10">
-                    <span className={`text-[10px] font-bold w-8 text-right ${isUrgent ? 'text-red-600' : 'text-indigo-600'}`}>{nullress}%</span>
-                    <div className={`flex-1 h-1. 5 rounded-full overflow-hidden ${isUrgent ? 'bg-red-200/50' : 'bg-slate-200/50'}`}>
-                        <div className={`h-full rounded-full ${isUrgent ? 'bg-red-600' : 'bg-accent'}`} style={{ width: `${nullress}%` }}></div>
-                    </div>
-                </div>
-            )}
         </motion.div>
     );
 };

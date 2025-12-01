@@ -43,9 +43,13 @@ export const problemsApi = {
 export const tasksApi = {
     getAll: (params) => api.get('/tasks', { params }).then(handleResponse),
     getById: (id) => api.get(`/tasks/${id}`).then(handleResponse),
+    getByDate: (date) => api.get(`/tasks/date/${date}`).then(handleResponse),
     create: (data) => api.post('/tasks', data).then(handleResponse),
     update: (id, data) => api.put(`/tasks/${id}`, data).then(handleResponse),
     delete: (id) => api.delete(`/tasks/${id}`).then(handleResponse),
+    toggle: (id, date) => api.post(`/tasks/${id}/toggle`, { date }).then(handleResponse),
+    exclude: (id, date) => api.post(`/tasks/${id}/exclude`, { date }).then(handleResponse),
+    getProgress: (id) => api.get(`/tasks/${id}/progress`).then(handleResponse),
 };
 
 // 学习时间 API
@@ -63,4 +67,15 @@ export const fileTreeApi = {
     update: (id, data) => api.put(`/file-tree/${id}`, data).then(handleResponse),
     delete: (id) => api.delete(`/file-tree/${id}`).then(handleResponse),
     ensureDraftBox: () => api.get('/file-tree/draft-box').then(handleResponse),
+};
+
+// 课程 API
+export const coursesApi = {
+    getAll: (params) => api.get('/courses', { params }).then(handleResponse),
+    getById: (id) => api.get(`/courses/${id}`).then(handleResponse),
+    create: (data) => api.post('/courses', data).then(handleResponse),
+    update: (id, data) => api.put(`/courses/${id}`, data).then(handleResponse),
+    delete: (id) => api.delete(`/courses/${id}`).then(handleResponse),
+    increment: (id) => api.patch(`/courses/${id}/increment`).then(handleResponse),
+    setProgress: (id, finished_lessons) => api.patch(`/courses/${id}/progress`, { finished_lessons }).then(handleResponse),
 };

@@ -76,7 +76,7 @@ const FileTreeItem = memo(({ node, level, activeId, onSelect, onRefresh }) => {
     return (
         <div className="select-none">
             <div
-                className={`group flex items-center gap-1 py-1. 5 px-2 rounded-lg cursor-pointer transition-colors relative
+                className={`group flex items-center gap-1 py-1.5 px-2 rounded-lg cursor-pointer transition-colors relative
           ${isActive ? 'bg-indigo-50/80 text-indigo-600 font-medium' : 'text-slate-600 hover:bg-white/50'}`}
                 style={{ paddingLeft: `${level * 12 + 8}px` }}
                 onClick={handleToggle}
@@ -405,7 +405,7 @@ export default function KnowledgeBase() {
             {/* 背景 */}
             <div
                 className="fixed inset-0 z-0 bg-cover bg-center bg-no-repeat blur-xl scale-110 opacity-90"
-                style={{ backgroundImage: 'url("https://images.unsplash. com/photo-1579546929518-9e396f3cc809?q=80&w=2070&auto=format&fit=crop")' }}
+                style={{ backgroundImage: 'url("https://images.unsplash.com/photo-1579546929518-9e396f3cc809?q=80&w=2070&auto=format&fit=crop")' }}
             />
             <div className="fixed inset-0 z-0 bg-slate-50/40" />
 
@@ -414,125 +414,140 @@ export default function KnowledgeBase() {
                 <Link to="/" className="p-2 rounded-xl bg-white/60 hover:bg-white/80 transition-colors shadow-sm text-slate-500 hover:text-slate-700 backdrop-blur-md border border-white/60">
                     <ArrowLeft size={20} />
                 </Link>
-                <h1 className="text-2xl font-bold text-slate-800">知识库</h1>
+                <div>
+                    <h1 className="text-2xl font-bold text-slate-800">知识库</h1>
+                    <p className="text-sm text-slate-500">管理你的笔记和文档</p>
+                </div>
             </div>
 
             {/* 内容区域 */}
-            <div className="relative z-10 flex h-[calc(100vh-140px)] gap-6">
+            <div className="relative z-10 grid grid-cols-1 lg:grid-cols-6 gap-6 flex-1">
 
                 {/* 左侧文件树 */}
-                <div className="w-60 flex-shrink-0 flex flex-col bg-white/60 backdrop-blur-md rounded-2xl border border-white/60 shadow-sm overflow-hidden">
-                    <div className="p-3 border-b border-white/40 bg-white/20 space-y-2">
-                        <div className="relative">
-                            <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
-                            <input
-                                type="text"
-                                placeholder="搜索..."
-                                className="w-full bg-white/50 border border-white/50 pl-9 pr-3 py-2 rounded-lg text-xs outline-none focus:bg-white transition-colors placeholder:text-slate-400"
-                                value={searchText}
-                                onChange={(e) => setSearchText(e.target.value)}
-                            />
-                        </div>
-                        <button
-                            onClick={() => setShowCreateFolderModal(true)}
-                            className="w-full flex items-center justify-center gap-1 px-2 py-1. 5 bg-white/50 hover:bg-white border border-white/50 rounded-lg text-xs text-slate-600 transition-colors"
-                        >
-                            <FolderPlus size={14} /> 新建文件夹
-                        </button>
+                <div className="lg:col-span-1 flex flex-col">
+                    <div className="flex items-center gap-2 mb-3 shrink-0">
+                        <div className="h-5 w-1 rounded-full bg-indigo-500"></div>
+                        <h3 className="font-bold text-slate-700">文件目录</h3>
                     </div>
 
-                    <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
-                        {displayTree.length === 0 ? (
-                            <div className="text-center py-8 text-slate-400 text-sm">
-                                {debouncedSearch ? '未找到匹配项' : '知识库为空'}
-                            </div>
-                        ) : (
-                            displayTree.map(node => (
-                                <FileTreeItem
-                                    key={node.id}
-                                    node={node}
-                                    level={0}
-                                    activeId={activeFile?.id}
-                                    onSelect={handleSelectFile}
-                                    onRefresh={fetchFileTree}
+                    <div className="bg-white/60 backdrop-blur-md rounded-2xl border border-white/60 shadow-sm overflow-hidden flex-1 flex flex-col">
+                        <div className="p-3 border-b border-white/40 bg-white/20 space-y-2 shrink-0">
+                            <div className="relative">
+                                <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
+                                <input
+                                    type="text"
+                                    placeholder="搜索..."
+                                    className="w-full bg-white/50 border border-white/50 pl-9 pr-3 py-2 rounded-lg text-xs outline-none focus:bg-white transition-colors placeholder:text-slate-400"
+                                    value={searchText}
+                                    onChange={(e) => setSearchText(e.target.value)}
                                 />
-                            ))
-                        )}
+                            </div>
+                            <button
+                                onClick={() => setShowCreateFolderModal(true)}
+                                className="w-full flex items-center justify-center gap-1 px-2 py-1.5 bg-white/50 hover:bg-white border border-white/50 rounded-lg text-xs text-slate-600 transition-colors"
+                            >
+                                <FolderPlus size={14} /> 新建文件夹
+                            </button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
+                            {displayTree.length === 0 ? (
+                                <div className="text-center py-8 text-slate-400 text-sm">
+                                    {debouncedSearch ? '未找到匹配项' : '知识库为空'}
+                                </div>
+                            ) : (
+                                displayTree.map(node => (
+                                    <FileTreeItem
+                                        key={node.id}
+                                        node={node}
+                                        level={0}
+                                        activeId={activeFile?.id}
+                                        onSelect={handleSelectFile}
+                                        onRefresh={fetchFileTree}
+                                    />
+                                ))
+                            )}
+                        </div>
                     </div>
                 </div>
 
                 {/* 右侧编辑区 */}
-                <div className="flex-1 bg-white/60 backdrop-blur-md rounded-2xl border border-white/60 shadow-sm overflow-hidden flex flex-col">
-                    {/* 工具栏 */}
-                    <div className="flex items-center justify-between p-4 border-b border-white/40 bg-white/20">
-                        <div className="flex items-center gap-2">
-                            <FileEdit size={18} className="text-slate-500" />
-                            <h2 className="font-bold text-slate-700">
-                                {activeFile ? activeFile.title : '新建笔记'}
-                            </h2>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <button
-                                onClick={() => setShowPreview(prev => !prev)}
-                                className={`p-2 rounded-lg transition-colors ${showPreview ? 'bg-indigo-100 text-indigo-600' : 'bg-white/50 text-slate-500 hover:bg-white'}`}
-                            >
-                                {showPreview ? <Eye size={16} /> : <EyeOff size={16} />}
-                            </button>
+                <div className="lg:col-span-5 flex flex-col">
+                    <div className="flex items-center gap-2 mb-3 shrink-0">
+                        <div className="h-5 w-1 rounded-full bg-emerald-500"></div>
+                        <h3 className="font-bold text-slate-700">{activeFile ? activeFile.title : '新建笔记'}</h3>
+                    </div>
 
-                            {activeFile && (
+                    <div className="bg-white/60 backdrop-blur-md rounded-2xl border border-white/60 shadow-sm overflow-hidden flex-1 flex flex-col">
+                        {/* 工具栏 */}
+                        <div className="flex items-center justify-between p-4 border-b border-white/40 bg-white/20 shrink-0">
+                            <div className="flex items-center gap-2">
+                                <FileEdit size={18} className="text-slate-500" />
+                                <span className="text-sm text-slate-500">Markdown 编辑器</span>
+                            </div>
+                            <div className="flex items-center gap-2">
                                 <button
-                                    onClick={handleSaveToFile}
-                                    disabled={saving}
-                                    className="px-3 py-1. 5 bg-indigo-500 hover:bg-indigo-600 text-white text-sm rounded-lg flex items-center gap-1 disabled:opacity-50"
+                                    onClick={() => setShowPreview(prev => !prev)}
+                                    className={`p-2 rounded-lg transition-colors ${showPreview ? 'bg-indigo-100 text-indigo-600' : 'bg-white/50 text-slate-500 hover:bg-white'}`}
                                 >
-                                    <Save size={14} /> {saving ? '.. .' : '保存'}
+                                    {showPreview ? <Eye size={16} /> : <EyeOff size={16} />}
                                 </button>
+
+                                {activeFile && (
+                                    <button
+                                        onClick={handleSaveToFile}
+                                        disabled={saving}
+                                        className="px-3 py-1.5 bg-indigo-500 hover:bg-indigo-600 text-white text-sm rounded-lg flex items-center gap-1 disabled:opacity-50"
+                                    >
+                                        <Save size={14} /> {saving ? '...' : '保存'}
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* 编辑器区域 */}
+                        <div className="flex-1 flex overflow-hidden">
+                            <div className={`flex flex-col ${showPreview ? 'w-1/2 border-r border-white/40' : 'w-full'}`}>
+                                <div className="px-4 py-2 bg-slate-50/50 text-xs font-medium text-slate-500 border-b border-white/40">
+                                    Markdown 编辑
+                                </div>
+                                <textarea
+                                    className="flex-1 p-4 bg-transparent text-sm text-slate-700 resize-none outline-none font-mono"
+                                    placeholder="使用 Markdown 语法书写笔记..."
+                                    value={editContent}
+                                    onChange={(e) => setEditContent(e.target.value)}
+                                />
+                            </div>
+
+                            {showPreview && (
+                                <div className="w-1/2 flex flex-col">
+                                    <div className="px-4 py-2 bg-slate-50/50 text-xs font-medium text-slate-500 border-b border-white/40">
+                                        实时预览
+                                    </div>
+                                    <div className="flex-1 p-4 overflow-y-auto prose prose-slate prose-sm max-w-none">
+                                        <MarkdownPreview content={editContent} />
+                                    </div>
+                                </div>
                             )}
                         </div>
-                    </div>
 
-                    {/* 编辑器区域 */}
-                    <div className="flex-1 flex overflow-hidden">
-                        <div className={`flex flex-col ${showPreview ? 'w-1/2 border-r border-white/40' : 'w-full'}`}>
-                            <div className="px-4 py-2 bg-slate-50/50 text-xs font-medium text-slate-500 border-b border-white/40">
-                                Markdown 编辑
-                            </div>
-                            <textarea
-                                className="flex-1 p-4 bg-transparent text-sm text-slate-700 resize-none outline-none font-mono"
-                                placeholder="使用 Markdown 语法书写笔记..."
-                                value={editContent}
-                                onChange={(e) => setEditContent(e.target.value)}
-                            />
+                        {/* 底部保存按钮 */}
+                        <div className="p-4 border-t border-white/40 bg-white/20 flex gap-3 shrink-0">
+                            <button
+                                onClick={handleSaveAsNote}
+                                disabled={saving || !editContent.trim()}
+                                className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            >
+                                <Save size={16} /> 保存为笔记
+                            </button>
+                            <button
+                                onClick={handleSaveAsDraft}
+                                disabled={saving || !editContent.trim()}
+                                className="flex-1 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            >
+                                <Inbox size={16} /> 保存为草稿
+                            </button>
                         </div>
-
-                        {showPreview && (
-                            <div className="w-1/2 flex flex-col">
-                                <div className="px-4 py-2 bg-slate-50/50 text-xs font-medium text-slate-500 border-b border-white/40">
-                                    实时预览
-                                </div>
-                                <div className="flex-1 p-4 overflow-y-auto prose prose-slate prose-sm max-w-none">
-                                    <MarkdownPreview content={editContent} />
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* 底部保存按钮 */}
-                    <div className="p-4 border-t border-white/40 bg-white/20 flex gap-3">
-                        <button
-                            onClick={handleSaveAsNote}
-                            disabled={saving || !editContent.trim()}
-                            className="flex-1 py-2. 5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        >
-                            <Save size={16} /> 保存为笔记
-                        </button>
-                        <button
-                            onClick={handleSaveAsDraft}
-                            disabled={saving || !editContent.trim()}
-                            className="flex-1 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        >
-                            <Inbox size={16} /> 保存为草稿
-                        </button>
                     </div>
                 </div>
             </div>

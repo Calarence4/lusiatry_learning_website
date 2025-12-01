@@ -35,13 +35,15 @@ exports.getTasksByDate = async (req, res, next) => {
         const query = `
       SELECT 
         t.*,
+        f.title AS subject_name,
         COALESCE(l.is_completed, 0) AS is_completed,
         COALESCE(l.is_excluded, 0) AS is_excluded
       FROM daily_tasks t
+      LEFT JOIN file_tree f ON t.subject = f.id
       LEFT JOIN daily_task_logs l ON t.id = l.task_id AND l.log_date = ?
       WHERE 
         (t.is_longterm = 1 AND t.start_date <= ? AND t.end_date >= ?)
-        OR (t.is_longterm = 0 AND t. start_date = ?)
+        OR (t.is_longterm = 0 AND t.start_date = ?)
       HAVING is_excluded = 0
       ORDER BY t.ddl_time ASC
     `;

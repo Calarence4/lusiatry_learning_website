@@ -10,8 +10,7 @@ exports.getAllCourses = async (req, res, next) => {
       SELECT 
         c.*,
         f.title AS subject_name,
-        (SELECT path FROM v_selectable_subjects WHERE id = c.subject) AS subject_path,
-        ROUND(c.finished_lessons / c.total_lessons * 100, 1) AS progress
+        ROUND(c.finished_lessons / c.total_lessons * 100, 1) AS calc_progress
       FROM courses c
       LEFT JOIN file_tree f ON c.subject = f.id
       WHERE 1=1
@@ -24,7 +23,7 @@ exports.getAllCourses = async (req, res, next) => {
         }
 
         if (status === 'completed') {
-            query += ' AND c. finished_lessons >= c.total_lessons';
+            query += ' AND c.finished_lessons >= c.total_lessons';
         } else if (status === 'in_progress') {
             query += ' AND c.finished_lessons < c.total_lessons';
         }
@@ -47,8 +46,7 @@ exports.getCourseById = async (req, res, next) => {
       SELECT 
         c.*,
         f.title AS subject_name,
-        (SELECT path FROM v_selectable_subjects WHERE id = c. subject) AS subject_path,
-        ROUND(c.finished_lessons / c. total_lessons * 100, 1) AS progress
+        ROUND(c.finished_lessons / c.total_lessons * 100, 1) AS calc_progress
       FROM courses c
       LEFT JOIN file_tree f ON c.subject = f.id
       WHERE c.id = ?
@@ -69,15 +67,15 @@ exports.getCourseById = async (req, res, next) => {
 // 创建课程
 exports.createCourse = async (req, res, next) => {
     try {
-        const { title, subject, start_date, end_date, total_lessons } = req.body;
+        const { title, subject, start_date, end_date, total_lessons, course_url, notes_path, color } = req.body;
 
         if (!title || !total_lessons) {
             return error(res, '课程名称和总课时为必填项', 400);
         }
 
         const [result] = await pool.query(
-            'INSERT INTO courses (title, subject, start_date, end_date, total_lessons, finished_lessons, process) VALUES (?, ?, ?, ?, ?, 0, 0)',
-            [title, subject || null, start_date || null, end_date || null, total_lessons]
+            'INSERT INTO courses (title, subject, start_date, end_date, total_lessons, finished_lessons, progress, course_url, notes_path, color) VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?, ?)',
+            [title, subject || null, start_date || null, end_date || null, total_lessons, course_url || null, notes_path || null, color || null]
         );
 
         success(res, { id: result.insertId }, '课程创建成功', 201);
@@ -90,11 +88,14 @@ exports.createCourse = async (req, res, next) => {
 exports.updateCourse = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const { title, subject, start_date, end_date, total_lessons } = req.body;
+        const { title, subject, start_date, end_date, total_lessons, finished_lessons, course_url, notes_path, color } = req.body;
+
+        // 计算进度百分比
+        const progress = total_lessons > 0 ? ((finished_lessons || 0) / total_lessons * 100).toFixed(1) : 0;
 
         const [result] = await pool.query(
-            'UPDATE courses SET title = ?, subject = ?, start_date = ?, end_date = ?, total_lessons = ? WHERE id = ?',
-            [title, subject || null, start_date || null, end_date || null, total_lessons, id]
+            'UPDATE courses SET title = ?, subject = ?, start_date = ?, end_date = ?, total_lessons = ?, finished_lessons = ?, progress = ?, course_url = ?, notes_path = ?, color = ? WHERE id = ?',
+            [title, subject || null, start_date || null, end_date || null, total_lessons, finished_lessons || 0, progress, course_url || null, notes_path || null, color || null, id]
         );
 
         if (result.affectedRows === 0) {
@@ -130,7 +131,7 @@ exports.incrementProgress = async (req, res, next) => {
         const newProgress = (newFinished / course.total_lessons * 100).toFixed(1);
 
         await pool.query(
-            'UPDATE courses SET finished_lessons = ?, process = ?  WHERE id = ?',
+            'UPDATE courses SET finished_lessons = ?, progress = ?  WHERE id = ?',
             [newFinished, newProgress, id]
         );
 

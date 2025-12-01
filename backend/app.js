@@ -13,6 +13,7 @@ app.use('/api/problems', require('./routes/problems'));
 app.use('/api/tasks', require('./routes/tasks'));
 app.use('/api/study-time', require('./routes/studyTime'));
 app.use('/api/file-tree', require('./routes/fileTree'));
+app.use('/api/courses', require('./routes/courses'));
 
 // 错误处理
 app.use((err, req, res, next) => {
