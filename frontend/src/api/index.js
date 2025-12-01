@@ -1,84 +1,66 @@
-const API_BASE = '/api';
+import axios from 'axios';
 
-async function request(url, options = {}) {
-    const config = {
-        headers: { 'Content-Type': 'application/json' },
-        ...options,
-    };
-    if (config.body && typeof config.body === 'object') {
-        config.body = JSON.stringify(config.body);
+const API_BASE = 'http://localhost:3001/api';
+
+const api = axios.create({
+    baseURL: API_BASE,
+    timeout: 10000,
+});
+
+// 通用响应处理
+const handleResponse = (res) => {
+    if (res.data.success) {
+        return res.data.data;
     }
-    const response = await fetch(`${API_BASE}${url}`, config);
-    const data = await response.json();
-    if (!data.success) throw new Error(data.message || '请求失败');
-    return data.data;
-}
-
-// ============================================
-// 草稿 API
-// ============================================
-export const draftsApi = {
-    getAll: (params = {}) => {
-        const query = new URLSearchParams(params).toString();
-        return request(`/drafts${query ? `?${query}` : ''}`);
-    },
-    create: (data) => request('/drafts', { method: 'POST', body: data }),
+    throw new Error(res.data.message || '请求失败');
 };
 
-// ============================================
-// 问题 API
-// ============================================
-export const problemsApi = {
-    getAll: (params = {}) => {
-        const query = new URLSearchParams(params).toString();
-        return request(`/problems${query ? `?${query}` : ''}`);
-    },
-    create: (data) => request('/problems', { method: 'POST', body: data }),
-    solve: (id) => request(`/problems/${id}/solve`, { method: 'PATCH' }),
-    unsolve: (id) => request(`/problems/${id}/unsolve`, { method: 'PATCH' }),
-};
-
-// ============================================
 // 学科 API
-// ============================================
 export const subjectsApi = {
-    getAll: () => request('/subjects'),
+    getAll: () => api.get('/subjects').then(handleResponse),
+    create: (data) => api.post('/subjects', data).then(handleResponse),
+    update: (id, data) => api.put(`/subjects/${id}`, data).then(handleResponse),
+    delete: (id) => api.delete(`/subjects/${id}`).then(handleResponse),
 };
 
-// ============================================
-// 知识库 API
-// ============================================
-
-// ============================================
-// 学习时间 API
-// ============================================
-export const studyTimeApi = {
-    getAll: (params = {}) => {
-        const query = new URLSearchParams(params).toString();
-        return request(`/study-time${query ? `?${query}` : ''}`);
-    },
-    create: (data) => request('/study-time', { method: 'POST', body: data }),
+// 草稿 API
+export const draftsApi = {
+    getAll: (params) => api.get('/drafts', { params }).then(handleResponse),
+    create: (data) => api.post('/drafts', data).then(handleResponse),
+    update: (id, data) => api.put(`/drafts/${id}`, data).then(handleResponse),
+    delete: (id) => api.delete(`/drafts/${id}`).then(handleResponse),
 };
 
-// ============================================
-// 【确保有这个】打卡任务 API
-// ============================================
+// 问题 API
+export const problemsApi = {
+    getAll: (params) => api.get('/problems', { params }).then(handleResponse),
+    create: (data) => api.post('/problems', data).then(handleResponse),
+    update: (id, data) => api.put(`/problems/${id}`, data).then(handleResponse),
+    delete: (id) => api.delete(`/problems/${id}`).then(handleResponse),
+};
+
+// 任务 API
 export const tasksApi = {
-    getAll: () => request('/tasks'),
-    getById: (id) => request(`/tasks/${id}`),
-    getByDate: (date) => request(`/tasks/date/${date}`),
-    create: (data) => request('/tasks', { method: 'POST', body: data }),
-    update: (id, data) => request(`/tasks/${id}`, { method: 'PUT', body: data }),
-    delete: (id) => request(`/tasks/${id}`, { method: 'DELETE' }),
-    toggle: (id, date) => request(`/tasks/${id}/toggle`, { method: 'POST', body: { date } }),
-    exclude: (id, date) => request(`/tasks/${id}/exclude`, { method: 'POST', body: { date } }),
+    getAll: (params) => api.get('/tasks', { params }).then(handleResponse),
+    getById: (id) => api.get(`/tasks/${id}`).then(handleResponse),
+    create: (data) => api.post('/tasks', data).then(handleResponse),
+    update: (id, data) => api.put(`/tasks/${id}`, data).then(handleResponse),
+    delete: (id) => api.delete(`/tasks/${id}`).then(handleResponse),
 };
 
+// 学习时间 API
+export const studyTimeApi = {
+    getAll: (params) => api.get('/study-time', { params }).then(handleResponse),
+    create: (data) => api.post('/study-time', data).then(handleResponse),
+    getStats: () => api.get('/study-time/stats').then(handleResponse),
+};
+
+// 文件树 API
 export const fileTreeApi = {
-    getTree: () => request('/file-tree'),
-    getById: (id) => request(`/file-tree/${id}`),
-    create: (data) => request('/file-tree', { method: 'POST', body: data }),
-    update: (id, data) => request(`/file-tree/${id}`, { method: 'PUT', body: data }),
-    move: (id, newParentId) => request(`/file-tree/${id}/move`, { method: 'PATCH', body: { new_parent_id: newParentId } }),
-    delete: (id) => request(`/file-tree/${id}`, { method: 'DELETE' }),
+    getTree: () => api.get('/file-tree').then(handleResponse),
+    getById: (id) => api.get(`/file-tree/${id}`).then(handleResponse),
+    create: (data) => api.post('/file-tree', data).then(handleResponse),
+    update: (id, data) => api.put(`/file-tree/${id}`, data).then(handleResponse),
+    delete: (id) => api.delete(`/file-tree/${id}`).then(handleResponse),
+    ensureDraftBox: () => api.get('/file-tree/draft-box').then(handleResponse),
 };

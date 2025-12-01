@@ -1,16 +1,22 @@
 const pool = require('../config/db');
-const { success, error } = require('../utils/response');
+
+const success = (res, data, status = 200) => {
+    res.status(status).json({ success: true, data });
+};
+
+const error = (res, message, status = 400) => {
+    res.status(status).json({ success: false, message });
+};
 
 // 获取文件树
 exports.getFileTree = async (req, res, next) => {
     try {
         const [rows] = await pool.query(`
-      SELECT id, title, type, parent_id, is_subject, content, created_at, updated_at
+      SELECT id, title, type, parent_id, is_subject, is_system, created_at, updated_at
       FROM file_tree
-      ORDER BY type DESC, title ASC
+      ORDER BY is_system DESC, type DESC, title ASC
     `);
 
-        // 构建树结构
         const buildTree = (nodes, parentId = null) => {
             return nodes
                 .filter(node => node.parent_id === parentId)
@@ -23,11 +29,12 @@ exports.getFileTree = async (req, res, next) => {
         const tree = buildTree(rows);
         success(res, tree);
     } catch (err) {
+        console.error('getFileTree error:', err);
         next(err);
     }
 };
 
-// 获取单个文件/文件夹
+// 获取单个文件
 exports.getById = async (req, res, next) => {
     try {
         const { id } = req.params;
@@ -42,11 +49,12 @@ exports.getById = async (req, res, next) => {
 
         success(res, rows[0]);
     } catch (err) {
+        console.error('getById error:', err);
         next(err);
     }
 };
 
-// 创建文件/文件夹
+// 创建
 exports.create = async (req, res, next) => {
     try {
         const { title, type, parent_id, is_subject, content } = req.body;
@@ -56,8 +64,8 @@ exports.create = async (req, res, next) => {
         }
 
         const [result] = await pool.query(
-            `INSERT INTO file_tree (title, type, parent_id, is_subject, content)
-       VALUES (?, ?, ?, ?, ?)`,
+            `INSERT INTO file_tree (title, type, parent_id, is_subject, is_system, content)
+       VALUES (?, ?, ?, ?, 0, ?)`,
             [title, type, parent_id || null, is_subject || 0, content || null]
         );
 
@@ -68,19 +76,20 @@ exports.create = async (req, res, next) => {
 
         success(res, newItem[0], 201);
     } catch (err) {
+        console.error('create error:', err);
         next(err);
     }
 };
 
-// 更新文件/文件夹
+// 更新
 exports.update = async (req, res, next) => {
     try {
         const { id } = req.params;
         const { title, content, is_subject } = req.body;
 
-        // 检查是否存在
+        // 检查是否为系统文件夹
         const [existing] = await pool.query(
-            'SELECT * FROM file_tree WHERE id = ? ',
+            'SELECT * FROM file_tree WHERE id = ?',
             [id]
         );
 
@@ -88,20 +97,24 @@ exports.update = async (req, res, next) => {
             return error(res, '文件不存在', 404);
         }
 
-        // 构建更新字段
+        // 系统草稿箱不允许重命名
+        if (existing[0].is_system && title && title !== existing[0].title) {
+            return error(res, '系统文件夹不可重命名', 403);
+        }
+
         const updates = [];
         const values = [];
 
-        if (title !== undefined) {
+        if (title !== undefined && !existing[0].is_system) {
             updates.push('title = ?');
             values.push(title);
         }
         if (content !== undefined) {
-            updates.push('content = ?');
+            updates.push('content = ? ');
             values.push(content);
         }
-        if (is_subject !== undefined) {
-            updates.push('is_subject = ?');
+        if (is_subject !== undefined && !existing[0].is_system) {
+            updates.push('is_subject = ? ');
             values.push(is_subject ? 1 : 0);
         }
 
@@ -109,11 +122,10 @@ exports.update = async (req, res, next) => {
             return error(res, '没有要更新的字段', 400);
         }
 
-        updates.push('updated_at = NOW()');
         values.push(id);
 
         await pool.query(
-            `UPDATE file_tree SET ${updates.join(', ')} WHERE id = ?`,
+            `UPDATE file_tree SET ${updates.join(', ')}, updated_at = NOW() WHERE id = ? `,
             values
         );
 
@@ -124,56 +136,19 @@ exports.update = async (req, res, next) => {
 
         success(res, updated[0]);
     } catch (err) {
+        console.error('update error:', err);
         next(err);
     }
 };
 
-// 移动文件/文件夹
-exports.move = async (req, res, next) => {
-    try {
-        const { id } = req.params;
-        const { new_parent_id } = req.body;
-
-        // 检查是否存在
-        const [existing] = await pool.query(
-            'SELECT * FROM file_tree WHERE id = ?',
-            [id]
-        );
-
-        if (existing.length === 0) {
-            return error(res, '文件不存在', 404);
-        }
-
-        // 防止移动到自己的子节点下
-        if (new_parent_id) {
-            const [parent] = await pool.query(
-                'SELECT * FROM file_tree WHERE id = ? ',
-                [new_parent_id]
-            );
-            if (parent.length === 0) {
-                return error(res, '目标文件夹不存在', 404);
-            }
-        }
-
-        await pool.query(
-            'UPDATE file_tree SET parent_id = ?, updated_at = NOW() WHERE id = ?',
-            [new_parent_id || null, id]
-        );
-
-        success(res, { message: '移动成功' });
-    } catch (err) {
-        next(err);
-    }
-};
-
-// 删除文件/文件夹（递归删除子节点）
+// 删除
 exports.delete = async (req, res, next) => {
     try {
         const { id } = req.params;
 
-        // 检查是否存在
+        // 检查是否为系统文件夹
         const [existing] = await pool.query(
-            'SELECT * FROM file_tree WHERE id = ?',
+            'SELECT * FROM file_tree WHERE id = ? ',
             [id]
         );
 
@@ -181,7 +156,11 @@ exports.delete = async (req, res, next) => {
             return error(res, '文件不存在', 404);
         }
 
-        // 递归删除所有子节点
+        if (existing[0].is_system) {
+            return error(res, '系统文件夹不可删除', 403);
+        }
+
+        // 递归删除
         const deleteRecursive = async (nodeId) => {
             const [children] = await pool.query(
                 'SELECT id FROM file_tree WHERE parent_id = ? ',
@@ -199,6 +178,30 @@ exports.delete = async (req, res, next) => {
 
         success(res, { message: '删除成功' });
     } catch (err) {
+        console.error('delete error:', err);
+        next(err);
+    }
+};
+
+// 确保系统草稿箱存在
+exports.ensureDraftBox = async (req, res, next) => {
+    try {
+        const [rows] = await pool.query(
+            'SELECT id FROM file_tree WHERE is_system = 1 AND title = ?',
+            ['草稿箱']
+        );
+
+        if (rows.length === 0) {
+            const [result] = await pool.query(
+                `INSERT INTO file_tree (title, type, parent_id, is_subject, is_system, content)
+         VALUES ('草稿箱', 'folder', NULL, 0, 1, NULL)`
+            );
+            success(res, { id: result.insertId, created: true });
+        } else {
+            success(res, { id: rows[0].id, created: false });
+        }
+    } catch (err) {
+        console.error('ensureDraftBox error:', err);
         next(err);
     }
 };
