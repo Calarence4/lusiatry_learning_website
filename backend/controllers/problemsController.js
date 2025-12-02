@@ -44,11 +44,11 @@ exports.getProblemById = async (req, res, next) => {
         const query = `
       SELECT 
         p.*,
-        f. title AS subject_name,
+        f.title AS subject_name,
         (SELECT path FROM v_selectable_subjects WHERE id = p.subject) AS subject_path
       FROM problems p
-      LEFT JOIN file_tree f ON p. subject = f.id
-      WHERE p. id = ?
+      LEFT JOIN file_tree f ON p.subject = f.id
+      WHERE p.id = ?
     `;
 
         const [rows] = await pool.query(query, [id]);
@@ -66,15 +66,15 @@ exports.getProblemById = async (req, res, next) => {
 // 创建问题
 exports.createProblem = async (req, res, next) => {
     try {
-        const { problem, content, subject, source } = req.body;
+        const { problem, subject } = req.body;
 
         if (!problem) {
             return error(res, '问题标题为必填项', 400);
         }
 
         const [result] = await pool.query(
-            'INSERT INTO problems (problem, content, subject, source, date) VALUES (?, ?, ?, ?, CURDATE())',
-            [problem, content || null, subject || null, source || null]
+            'INSERT INTO problems (problem, subject, date) VALUES (?, ?, CURDATE())',
+            [problem, subject || null]
         );
 
         success(res, { id: result.insertId }, '问题创建成功', 201);
@@ -87,12 +87,49 @@ exports.createProblem = async (req, res, next) => {
 exports.updateProblem = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const { problem, content, subject, source } = req.body;
+        const { problem, content, subject, source, solution, answer, related_note_id } = req.body;
 
-        const [result] = await pool.query(
-            'UPDATE problems SET problem = ?, content = ?, subject = ?, source = ?  WHERE id = ?',
-            [problem, content || null, subject || null, source || null, id]
-        );
+        // 构建动态更新查询
+        const updates = [];
+        const params = [];
+
+        if (problem !== undefined) {
+            updates.push('problem = ?');
+            params.push(problem);
+        }
+        if (content !== undefined) {
+            updates.push('content = ?');
+            params.push(content || null);
+        }
+        if (subject !== undefined) {
+            updates.push('subject = ?');
+            params.push(subject || null);
+        }
+        if (source !== undefined) {
+            updates.push('source = ?');
+            params.push(source || null);
+        }
+        if (solution !== undefined) {
+            updates.push('solution = ?');
+            params.push(solution || null);
+        }
+        if (answer !== undefined) {
+            updates.push('answer = ?');
+            params.push(answer || null);
+        }
+        if (related_note_id !== undefined) {
+            updates.push('related_note_id = ?');
+            params.push(related_note_id || null);
+        }
+
+        if (updates.length === 0) {
+            return error(res, '没有要更新的字段', 400);
+        }
+
+        params.push(id);
+        const query = `UPDATE problems SET ${updates.join(', ')} WHERE id = ?`;
+
+        const [result] = await pool.query(query, params);
 
         if (result.affectedRows === 0) {
             return error(res, '问题不存在', 404);
@@ -110,7 +147,7 @@ exports.solveProblem = async (req, res, next) => {
         const { id } = req.params;
 
         const [result] = await pool.query(
-            'UPDATE problems SET is_solved = 1, resolved_at = NOW() WHERE id = ? ',
+            'UPDATE problems SET is_solved = 1 WHERE id = ?',
             [id]
         );
 
@@ -130,7 +167,7 @@ exports.unsolveProblem = async (req, res, next) => {
         const { id } = req.params;
 
         const [result] = await pool.query(
-            'UPDATE problems SET is_solved = 0, resolved_at = NULL WHERE id = ? ',
+            'UPDATE problems SET is_solved = 0 WHERE id = ?',
             [id]
         );
 

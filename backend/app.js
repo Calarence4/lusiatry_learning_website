@@ -1,8 +1,17 @@
 const express = require('express');
 const cors = require('cors');
+const compression = require('compression');
 const app = express();
 
 // 中间件
+app.use(compression({  // 响应压缩 - 性能优化
+    level: 6,
+    threshold: 1024,  // 超过1KB才压缩
+    filter: (req, res) => {
+        if (req.headers['x-no-compression']) return false;
+        return compression.filter(req, res);
+    }
+}));
 app.use(cors());
 app.use(express.json());
 
@@ -22,7 +31,7 @@ app.use((err, req, res, next) => {
 });
 
 // 启动服务
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });

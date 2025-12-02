@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { HelpCircle, CheckCircle2, Circle, MessageSquare, ArrowLeft } from 'lucide-react';
+import { HelpCircle, CheckCircle2, Circle, MessageSquare, ArrowLeft, X, Link2, FileText, ChevronDown, ChevronUp } from 'lucide-react';
 import { Link } from 'react-router-dom';
 // ============================================
 // 【删除】删除以下这行
@@ -9,7 +9,7 @@ import { Link } from 'react-router-dom';
 // ============================================
 // 【新增】引入 API
 // ============================================
-import { problemsApi } from '../api';
+import { problemsApi, fileTreeApi } from '../api';
 
 export default function Questions() {
   // ============================================
@@ -22,6 +22,22 @@ export default function Questions() {
   // 【新增】新的状态变量
   // ============================================
   const [loading, setLoading] = useState(true);
+
+  // 思路编辑模态框状态
+  const [editingQuestion, setEditingQuestion] = useState(null);
+  const [solutionText, setSolutionText] = useState('');
+  const [selectedNoteId, setSelectedNoteId] = useState(null);
+  const [notes, setNotes] = useState([]);
+  const [showNoteSelector, setShowNoteSelector] = useState(false);
+  const [savingAnswer, setSavingAnswer] = useState(false);
+
+  // 答案编辑模态框状态
+  const [answerModalQuestion, setAnswerModalQuestion] = useState(null);
+  const [answerText, setAnswerText] = useState('');
+  const [savingAnswerText, setSavingAnswerText] = useState(false);
+
+  // 展开的问题详情
+  const [expandedId, setExpandedId] = useState(null);
 
   // ============================================
   // 【新增】加载数据
@@ -39,6 +55,33 @@ export default function Questions() {
       }
     }
     fetchQuestions();
+  }, []);
+
+  // 加载知识库笔记列表
+  useEffect(() => {
+    async function fetchNotes() {
+      try {
+        const tree = await fileTreeApi.getAll();
+        // 递归获取所有笔记文件
+        const allNotes = [];
+        const extractNotes = (items, path = '') => {
+          items.forEach(item => {
+            const currentPath = path ? `${path}/${item.title}` : item.title;
+            if (item.type === 'file') {
+              allNotes.push({ ...item, path: currentPath });
+            }
+            if (item.children) {
+              extractNotes(item.children, currentPath);
+            }
+          });
+        };
+        extractNotes(tree || []);
+        setNotes(allNotes);
+      } catch (err) {
+        console.error('加载笔记列表失败:', err);
+      }
+    }
+    fetchNotes();
   }, []);
 
   // ============================================
@@ -68,18 +111,114 @@ export default function Questions() {
 
   // ============================================
   // 【修改】filteredQuestions 使用新字段
+  // 有答案的问题视为已解决
   // ============================================
   const filteredQuestions = questions.filter(q => {
+    const isSolved = q.is_solved || q.answer;
     if (filter === 'all') return true;
-    if (filter === 'unresolved') return !q.is_solved;
-    if (filter === 'resolved') return q.is_solved;
+    if (filter === 'unresolved') return !isSolved;
+    if (filter === 'resolved') return isSolved;
     return true;
   });
 
   // ============================================
   // 【修改】unresolvedCount 使用新字段
+  // 有答案的问题视为已解决
   // ============================================
-  const unresolvedCount = questions.filter(q => !q.is_solved).length;
+  const unresolvedCount = questions.filter(q => !q.is_solved && !q.answer).length;
+  const resolvedCount = questions.filter(q => q.is_solved || q.answer).length;
+
+  // 打开答案编辑模态框
+  const openAnswerModal = (question) => {
+    setEditingQuestion(question);
+    setSolutionText(question.solution || '');
+    setSelectedNoteId(question.related_note_id || null);
+    setShowNoteSelector(false);
+  };
+
+  // 关闭答案编辑模态框
+  const closeAnswerModal = () => {
+    setEditingQuestion(null);
+    setSolutionText('');
+    setSelectedNoteId(null);
+    setShowNoteSelector(false);
+  };
+
+  // 保存答案
+  const saveAnswer = async () => {
+    if (!editingQuestion) return;
+    
+    setSavingAnswer(true);
+    try {
+      await problemsApi.update(editingQuestion.id, {
+        solution: solutionText,
+        related_note_id: selectedNoteId
+      });
+      
+      // 更新本地状态
+      setQuestions(questions.map(q =>
+        q.id === editingQuestion.id
+          ? { ...q, solution: solutionText, related_note_id: selectedNoteId }
+          : q
+      ));
+      
+      closeAnswerModal();
+    } catch (err) {
+      console.error('保存答案失败:', err);
+      alert('保存失败: ' + err.message);
+    } finally {
+      setSavingAnswer(false);
+    }
+  };
+
+  // 获取关联笔记名称
+  const getNoteName = (noteId) => {
+    const note = notes.find(n => n.id === noteId);
+    return note ? note.path : null;
+  };
+
+  // 切换展开/收起
+  const toggleExpand = (id) => {
+    setExpandedId(expandedId === id ? null : id);
+  };
+
+  // 打开答案模态框
+  const openAnswerTextModal = (question) => {
+    setAnswerModalQuestion(question);
+    setAnswerText(question.answer || '');
+  };
+
+  // 关闭答案模态框
+  const closeAnswerTextModal = () => {
+    setAnswerModalQuestion(null);
+    setAnswerText('');
+  };
+
+  // 保存答案
+  const saveAnswerText = async () => {
+    if (!answerModalQuestion) return;
+    
+    setSavingAnswerText(true);
+    try {
+      await problemsApi.update(answerModalQuestion.id, {
+        answer: answerText
+      });
+      
+      // 更新本地状态
+      setQuestions(questions.map(q =>
+        q.id === answerModalQuestion.id
+          ? { ...q, answer: answerText }
+          : q
+      ));
+      
+      closeAnswerTextModal();
+    } catch (err) {
+      console.error('保存答案失败:', err);
+      alert('保存失败: ' + err.message);
+    } finally {
+      setSavingAnswerText(false);
+    }
+  };
 
   // ============================================
   // 【新增】加载状态
@@ -151,6 +290,11 @@ export default function Questions() {
                     {unresolvedCount}
                   </span>
                 )}
+                {f === 'resolved' && (
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-bold ${filter === f ? 'bg-emerald-500 text-white' : 'bg-emerald-100 text-emerald-500'}`}>
+                    {resolvedCount}
+                  </span>
+                )}
               </div>
             ))}
           </div>
@@ -164,22 +308,31 @@ export default function Questions() {
               </div>
             )}
 
-            {filteredQuestions.map(q => (
+            {filteredQuestions.map(q => {
+              const isSolved = q.is_solved || q.answer;
+              return (
               <div
                 key={q.id}
-                className={`bg-white/60 backdrop-blur-md p-6 rounded-2xl border transition-all group ${q.is_solved ? 'border-white/40 opacity-60 grayscale-[0.5]' : 'border-white/60 shadow-sm hover:border-red-200/50 hover:shadow-md hover:bg-white/80'}`}
+                className={`bg-white/60 backdrop-blur-md p-6 rounded-2xl border transition-all group ${isSolved ? 'border-white/40 opacity-70' : 'border-white/60 shadow-sm hover:border-red-200/50 hover:shadow-md hover:bg-white/80'}`}
               >
                 <div className="flex items-start gap-4">
-                  <div
-                    onClick={() => toggleStatus(q.id)}
-                    className="mt-1 cursor-pointer hover:scale-110 transition-transform"
-                    title={q.is_solved ? "标记为未解决" : "标记为已解决"}
-                  >
-                    {q.is_solved
-                      ? <CheckCircle2 className="text-emerald-500" size={24} />
-                      : <Circle className="text-slate-400 hover:text-red-400" size={24} />
-                    }
-                  </div>
+                  {/* 状态图标：有答案的不显示圆圈按钮 */}
+                  {q.answer ? (
+                    <div className="mt-1">
+                      <CheckCircle2 className="text-emerald-500" size={24} />
+                    </div>
+                  ) : (
+                    <div
+                      onClick={() => toggleStatus(q.id)}
+                      className="mt-1 cursor-pointer hover:scale-110 transition-transform"
+                      title={q.is_solved ? "标记为未解决" : "标记为已解决"}
+                    >
+                      {q.is_solved
+                        ? <CheckCircle2 className="text-emerald-500" size={24} />
+                        : <Circle className="text-slate-400 hover:text-red-400" size={24} />
+                      }
+                    </div>
+                  )}
 
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
@@ -189,35 +342,253 @@ export default function Questions() {
                       <span className="text-xs text-slate-400 font-medium">
                         {q.date ? new Date(q.date).toLocaleDateString() : ''}
                       </span>
+                      {q.answer && (
+                        <span className="text-xs font-bold text-emerald-500 bg-emerald-50 px-2 py-0.5 rounded">
+                          已解答
+                        </span>
+                      )}
                     </div>
-                    <h3 className={`text-lg font-bold mb-2 ${q.is_solved ? 'text-slate-500 line-through' : 'text-slate-800'}`}>
+                    <h3 className={`text-lg font-bold mb-2 ${isSolved ? 'text-slate-500' : 'text-slate-800'}`}>
                       {q.problem}
                     </h3>
+                    
+                    {/* 已完成问题直接显示答案 */}
+                    {q.answer && (
+                      <div className="mt-2 text-sm text-slate-600 bg-emerald-50/50 border border-emerald-100/50 p-3 rounded-lg">
+                        <div className="text-xs font-bold text-emerald-600 mb-1">答案</div>
+                        <p className="whitespace-pre-wrap">{q.answer}</p>
+                      </div>
+                    )}
+
                     {q.content && (
                       <p className="text-sm text-slate-600 mb-3">
                         {q.content}
                       </p>
                     )}
-                    {q.is_solved && q.related_draft_id && (
-                      <div className="bg-emerald-50/60 border border-emerald-100/50 p-3 rounded-lg text-sm text-emerald-800 mt-3 flex gap-2">
-                        <CheckCircle2 size={16} className="mt-0. 5 shrink-0" />
-                        <div>已关联草稿笔记</div>
-                      </div>
-                    )}
-                    {!q.is_solved && (
-                      <div className="mt-3 flex gap-2">
-                        <button className="text-xs font-bold text-indigo-500 hover:text-indigo-600 flex items-center gap-1 px-2 py-1 rounded hover:bg-indigo-50 transition-colors">
-                          <MessageSquare size={12} /> 添加解决思路
+
+                    {/* 已有思路/关联笔记展示 */}
+                    {(q.solution || q.related_note_id) && (
+                      <div className="mt-3">
+                        <button 
+                          onClick={() => toggleExpand(q.id)}
+                          className="text-xs font-bold text-slate-500 hover:text-slate-700 flex items-center gap-1"
+                        >
+                          {expandedId === q.id ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                          {q.solution ? '查看解决思路' : '查看关联笔记'}
                         </button>
+                        
+                        {expandedId === q.id && (
+                          <div className="mt-3 space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                            {q.solution && (
+                              <div className="bg-slate-50/80 border border-slate-100 p-3 rounded-lg text-sm text-slate-700">
+                                <div className="text-xs font-bold text-slate-400 mb-1">解决思路</div>
+                                <p className="whitespace-pre-wrap">{q.solution}</p>
+                              </div>
+                            )}
+                            {q.related_note_id && (
+                              <div className="bg-indigo-50/80 border border-indigo-100 p-3 rounded-lg text-sm text-indigo-700 flex items-center gap-2">
+                                <Link2 size={14} />
+                                <span>关联笔记：</span>
+                                <Link 
+                                  to={`/knowledge-base?file=${q.related_note_id}`}
+                                  className="font-medium hover:underline"
+                                >
+                                  {getNoteName(q.related_note_id) || '查看笔记'}
+                                </Link>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
+
+                    {/* 操作按钮 */}
+                    <div className="mt-3 flex gap-2">
+                      <button 
+                        onClick={() => openAnswerTextModal(q)}
+                        className="text-xs font-bold text-emerald-500 hover:text-emerald-600 flex items-center gap-1 px-2 py-1 rounded hover:bg-emerald-50 transition-colors"
+                      >
+                        <CheckCircle2 size={12} /> {q.answer ? '编辑答案' : '添加答案'}
+                      </button>
+                      <button 
+                        onClick={() => openAnswerModal(q)}
+                        className="text-xs font-bold text-indigo-500 hover:text-indigo-600 flex items-center gap-1 px-2 py-1 rounded hover:bg-indigo-50 transition-colors"
+                      >
+                        <MessageSquare size={12} /> {q.solution ? '编辑思路' : '添加思路'}
+                      </button>
+                      {!q.related_note_id && (
+                        <button 
+                          onClick={() => openAnswerModal(q)}
+                          className="text-xs font-bold text-slate-500 hover:text-slate-600 flex items-center gap-1 px-2 py-1 rounded hover:bg-slate-50 transition-colors"
+                        >
+                          <Link2 size={12} /> 关联笔记
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
+
+      {/* 思路编辑模态框 */}
+      {editingQuestion && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={closeAnswerModal}></div>
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 animate-in fade-in zoom-in-95 duration-200">
+            <button 
+              onClick={closeAnswerModal}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"
+            >
+              <X size={20} />
+            </button>
+            
+            <h3 className="text-lg font-bold text-slate-800 mb-1">添加解决思路</h3>
+            <p className="text-sm text-slate-500 mb-4 line-clamp-2">{editingQuestion.problem}</p>
+            
+            {/* 解决思路输入 */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                <MessageSquare size={14} className="inline mr-1" />
+                解决思路
+              </label>
+              <textarea
+                value={solutionText}
+                onChange={(e) => setSolutionText(e.target.value)}
+                placeholder="记录你的解题思路、方法或心得..."
+                className="w-full h-32 px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none text-sm"
+              />
+            </div>
+            
+            {/* 关联知识库笔记 */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                <Link2 size={14} className="inline mr-1" />
+                关联知识库笔记（可选）
+              </label>
+              
+              <div className="relative">
+                <button
+                  onClick={() => setShowNoteSelector(!showNoteSelector)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-left text-sm flex items-center justify-between hover:border-slate-300 transition-colors"
+                >
+                  {selectedNoteId ? (
+                    <span className="text-slate-700 flex items-center gap-2">
+                      <FileText size={14} className="text-indigo-500" />
+                      {getNoteName(selectedNoteId)}
+                    </span>
+                  ) : (
+                    <span className="text-slate-400">选择一篇笔记...</span>
+                  )}
+                  <ChevronDown size={16} className={`text-slate-400 transition-transform ${showNoteSelector ? 'rotate-180' : ''}`} />
+                </button>
+                
+                {showNoteSelector && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-y-auto z-10">
+                    <div 
+                      onClick={() => { setSelectedNoteId(null); setShowNoteSelector(false); }}
+                      className="px-3 py-2 text-sm text-slate-400 hover:bg-slate-50 cursor-pointer"
+                    >
+                      不关联笔记
+                    </div>
+                    {notes.map(note => (
+                      <div
+                        key={note.id}
+                        onClick={() => { setSelectedNoteId(note.id); setShowNoteSelector(false); }}
+                        className={`px-3 py-2 text-sm cursor-pointer flex items-center gap-2 ${
+                          selectedNoteId === note.id 
+                            ? 'bg-indigo-50 text-indigo-700' 
+                            : 'text-slate-700 hover:bg-slate-50'
+                        }`}
+                      >
+                        <FileText size={14} className="text-slate-400 shrink-0" />
+                        <span className="truncate">{note.path}</span>
+                      </div>
+                    ))}
+                    {notes.length === 0 && (
+                      <div className="px-3 py-4 text-sm text-slate-400 text-center">
+                        暂无笔记
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            {/* 操作按钮 */}
+            <div className="flex gap-3">
+              <button
+                onClick={closeAnswerModal}
+                className="flex-1 px-4 py-2 border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 transition-colors text-sm font-medium"
+              >
+                取消
+              </button>
+              <button
+                onClick={saveAnswer}
+                disabled={savingAnswer}
+                className="flex-1 px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors text-sm font-medium disabled:opacity-50"
+              >
+                {savingAnswer ? '保存中...' : '保存'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 答案编辑模态框 */}
+      {answerModalQuestion && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={closeAnswerTextModal}></div>
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 animate-in fade-in zoom-in-95 duration-200">
+            <button 
+              onClick={closeAnswerTextModal}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"
+            >
+              <X size={20} />
+            </button>
+            
+            <h3 className="text-lg font-bold text-slate-800 mb-1">
+              <CheckCircle2 size={18} className="inline mr-2 text-emerald-500" />
+              添加答案
+            </h3>
+            <p className="text-sm text-slate-500 mb-4 line-clamp-2">{answerModalQuestion.problem}</p>
+            
+            {/* 答案输入 */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                问题答案
+              </label>
+              <textarea
+                value={answerText}
+                onChange={(e) => setAnswerText(e.target.value)}
+                placeholder="输入问题的正确答案..."
+                className="w-full h-40 px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none text-sm"
+              />
+              <p className="text-xs text-slate-400 mt-1">添加答案后，该问题将自动标记为已解决</p>
+            </div>
+            
+            {/* 操作按钮 */}
+            <div className="flex gap-3">
+              <button
+                onClick={closeAnswerTextModal}
+                className="flex-1 px-4 py-2 border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 transition-colors text-sm font-medium"
+              >
+                取消
+              </button>
+              <button
+                onClick={saveAnswerText}
+                disabled={savingAnswerText}
+                className="flex-1 px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors text-sm font-medium disabled:opacity-50"
+              >
+                {savingAnswerText ? '保存中...' : '保存答案'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,22 +1,17 @@
 const pool = require('../config/db');
 const { success, error } = require('../utils/response');
 
-// 构建学科路径的辅助函数
-const buildSubjectPath = (subjects, parentId = null, parentPath = '') => {
-    const result = [];
+// 构建学科树形结构
+const buildSubjectTree = (subjects, parentId = null) => {
     const children = subjects.filter(s => s.parent_id === parentId);
-
-    for (const subject of children) {
-        const path = parentPath ? `${parentPath} / ${subject.title}` : subject.title;
-        result.push({ id: subject.id, title: subject.title, path });
-        // 递归处理子学科
-        result.push(...buildSubjectPath(subjects, subject.id, path));
-    }
-
-    return result;
+    return children.map(subject => ({
+        id: subject.id,
+        title: subject.title,
+        children: buildSubjectTree(subjects, subject.id)
+    }));
 };
 
-// 获取可选学科列表
+// 获取可选学科列表（树形结构）
 exports.getSelectableSubjects = async (req, res, next) => {
     try {
         // 直接查询所有标记为学科的记录
@@ -27,10 +22,10 @@ exports.getSelectableSubjects = async (req, res, next) => {
             ORDER BY title
         `);
 
-        // 构建带路径的学科列表
-        const subjectsWithPath = buildSubjectPath(rows);
+        // 构建树形结构，只返回一级学科（包含子学科）
+        const subjectTree = buildSubjectTree(rows);
 
-        success(res, subjectsWithPath);
+        success(res, subjectTree);
     } catch (err) {
         next(err);
     }

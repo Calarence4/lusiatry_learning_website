@@ -1,16 +1,18 @@
 const pool = require('../config/db');
 const { success, error } = require('../utils/response');
 
-// 获取课程列表
+// 获取课程列表（支持分页）
 exports.getAllCourses = async (req, res, next) => {
     try {
-        const { subject, status } = req.query;
+        const { subject, status, page, limit } = req.query;
+        
+        // 分页参数
+        const pageNum = parseInt(page) || 1;
+        const pageSize = parseInt(limit) || 50;  // 默认50条，不分页时返回全部
+        const offset = (pageNum - 1) * pageSize;
+        const isPaginated = page && limit;
 
-        let query = `
-      SELECT 
-        c.*,
-        f.title AS subject_name,
-        ROUND(c.finished_lessons / c.total_lessons * 100, 1) AS calc_progress
+        let baseQuery = `
       FROM courses c
       LEFT JOIN file_tree f ON c.subject = f.id
       WHERE 1=1
@@ -18,20 +20,54 @@ exports.getAllCourses = async (req, res, next) => {
         const params = [];
 
         if (subject) {
-            query += ' AND c.subject = ?';
+            baseQuery += ' AND c.subject = ?';
             params.push(subject);
         }
 
         if (status === 'completed') {
-            query += ' AND c.finished_lessons >= c.total_lessons';
+            baseQuery += ' AND c.finished_lessons >= c.total_lessons';
         } else if (status === 'in_progress') {
-            query += ' AND c.finished_lessons < c.total_lessons';
+            baseQuery += ' AND c.finished_lessons < c.total_lessons';
         }
 
-        query += ' ORDER BY c.created_at DESC';
+        // 获取总数
+        let total = 0;
+        if (isPaginated) {
+            const [countResult] = await pool.query(`SELECT COUNT(*) as total ${baseQuery}`, params);
+            total = countResult[0].total;
+        }
 
-        const [rows] = await pool.query(query, params);
-        success(res, rows);
+        // 获取数据
+        let dataQuery = `
+      SELECT 
+        c.*,
+        f.title AS subject_name,
+        ROUND(c.finished_lessons / c.total_lessons * 100, 1) AS calc_progress
+      ${baseQuery}
+      ORDER BY c.created_at DESC
+    `;
+        
+        if (isPaginated) {
+            dataQuery += ' LIMIT ? OFFSET ?';
+            params.push(pageSize, offset);
+        }
+
+        const [rows] = await pool.query(dataQuery, params);
+        
+        // 返回分页信息或直接返回数据
+        if (isPaginated) {
+            success(res, {
+                list: rows,
+                pagination: {
+                    page: pageNum,
+                    limit: pageSize,
+                    total,
+                    totalPages: Math.ceil(total / pageSize)
+                }
+            });
+        } else {
+            success(res, rows);
+        }
     } catch (err) {
         next(err);
     }
@@ -171,7 +207,7 @@ exports.setProgress = async (req, res, next) => {
         const newProgress = (finished_lessons / course.total_lessons * 100).toFixed(1);
 
         await pool.query(
-            'UPDATE courses SET finished_lessons = ?, process = ? WHERE id = ? ',
+            'UPDATE courses SET finished_lessons = ?, progress = ? WHERE id = ?',
             [finished_lessons, newProgress, id]
         );
 

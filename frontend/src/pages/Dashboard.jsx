@@ -15,29 +15,19 @@ import { studyTimeApi, tasksApi } from '../api';
 
 import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, format, addDays, getDay, differenceInCalendarDays } from 'date-fns';
 
-// === 1. 定义大类映射关系 ===
-const SUBJECT_MAPPING = {
-    'React': '计算机',
-    '算法': '计算机',
-    '后端': '计算机',
-    '架构': '计算机',
-    '运维': '计算机',
-    '测试': '计算机',
-    '设计': '设计',
-    '英语': '语言',
-    '日语': '语言',
-    '吉他': '音乐',
-    '钢琴': '音乐'
-};
-
-// === 2. 定义大类的颜色 ===
-const MAJOR_SUBJECT_COLORS = {
-    '计算机': '#6366f1',
-    '设计': '#f59e0b',
-    '语言': '#10b981',
-    '音乐': '#f43f5e',
-    '其他': '#94a3b8'
-};
+// === 学科颜色池 ===
+const SUBJECT_COLORS = [
+    '#6366f1', // 紫色
+    '#10b981', // 绿色
+    '#f59e0b', // 橙色
+    '#f43f5e', // 红色
+    '#3b82f6', // 蓝色
+    '#8b5cf6', // 紫罗兰
+    '#ec4899', // 粉色
+    '#14b8a6', // 青色
+    '#f97316', // 橘色
+    '#84cc16', // 黄绿
+];
 
 const renderActiveShape = (props) => {
     const { cx, cy, innerRadius, outerRadius, startAngle, endAngle, fill, payload, percent } = props;
@@ -130,6 +120,7 @@ export default function Dashboard() {
     // ============================================
     const [loading, setLoading] = useState(true);
     const [studyTimeLogs, setStudyTimeLogs] = useState([]);
+    const [subjectStats, setSubjectStats] = useState([]);
     const [completedTasksCount, setCompletedTasksCount] = useState(0);
 
     // ============================================
@@ -153,12 +144,14 @@ export default function Dashboard() {
                     endDate = format(endOfYear(now), 'yyyy-MM-dd');
                 }
 
-                const [logsData, tasksData] = await Promise.all([
+                const [logsData, statsData, tasksData] = await Promise.all([
                     studyTimeApi.getAll({ start_date: startDate, end_date: endDate }),
+                    studyTimeApi.getStats({ start_date: startDate, end_date: endDate, group_by: 'subject' }),
                     tasksApi.getAll()
                 ]);
 
                 setStudyTimeLogs(logsData || []);
+                setSubjectStats(statsData || []);
                 // 简单统计已完成任务数
                 setCompletedTasksCount((tasksData || []).filter(t => t.is_longterm).length);
             } catch (err) {
@@ -180,20 +173,12 @@ export default function Dashboard() {
         const sumMinutes = studyTimeLogs.reduce((acc, cur) => acc + (cur.duration || 0), 0);
         const sumHours = sumMinutes / 60;
 
-        // 按学科分组
-        const categoryMap = {};
-        studyTimeLogs.forEach(log => {
-            const subjectName = log.subject_name || '其他';
-            const majorSubject = SUBJECT_MAPPING[subjectName] || '其他';
-            if (!categoryMap[majorSubject]) categoryMap[majorSubject] = 0;
-            categoryMap[majorSubject] += (log.duration || 0) / 60;
-        });
-
-        const calculatedPieData = Object.keys(categoryMap).map(cat => ({
-            name: cat,
-            value: categoryMap[cat],
-            color: MAJOR_SUBJECT_COLORS[cat] || MAJOR_SUBJECT_COLORS['其他']
-        })).sort((a, b) => b.value - a.value);
+        // 使用后端返回的学科统计数据
+        const calculatedPieData = subjectStats.map((stat, index) => ({
+            name: stat.subject_name || '其他',
+            value: (Number(stat.total_duration) || 0) / 60, // 分钟转小时，确保类型转换
+            color: SUBJECT_COLORS[index % SUBJECT_COLORS.length]
+        })).filter(item => item.value > 0);
 
         if (calculatedPieData.length === 0) {
             calculatedPieData.push({ name: '无数据', value: 0.01, color: '#e2e8f0' });
@@ -255,7 +240,7 @@ export default function Dashboard() {
             totalHours: sumHours,
             totalKnowledgePoints: completedTasksCount
         };
-    }, [studyTimeLogs, timeRange, completedTasksCount]);
+    }, [studyTimeLogs, subjectStats, timeRange, completedTasksCount]);
 
     // ============================================
     // 【新增】加载状态

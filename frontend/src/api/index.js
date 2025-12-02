@@ -37,6 +37,8 @@ export const problemsApi = {
     create: (data) => api.post('/problems', data).then(handleResponse),
     update: (id, data) => api.put(`/problems/${id}`, data).then(handleResponse),
     delete: (id) => api.delete(`/problems/${id}`).then(handleResponse),
+    solve: (id) => api.patch(`/problems/${id}/solve`).then(handleResponse),
+    unsolve: (id) => api.patch(`/problems/${id}/unsolve`).then(handleResponse),
 };
 
 // 任务 API
@@ -55,8 +57,9 @@ export const tasksApi = {
 // 学习时间 API
 export const studyTimeApi = {
     getAll: (params) => api.get('/study-time', { params }).then(handleResponse),
+    getStats: (params) => api.get('/study-time/stats', { params }).then(handleResponse),
     create: (data) => api.post('/study-time', data).then(handleResponse),
-    getStats: () => api.get('/study-time/stats').then(handleResponse),
+    getDailyTotal: (date) => api.get(`/study-time/daily/${date}`).then(handleResponse),
 };
 
 // 文件树 API
@@ -67,6 +70,7 @@ export const fileTreeApi = {
     update: (id, data) => api.put(`/file-tree/${id}`, data).then(handleResponse),
     delete: (id) => api.delete(`/file-tree/${id}`).then(handleResponse),
     ensureDraftBox: () => api.get('/file-tree/draft-box').then(handleResponse),
+    getTodayCount: () => api.get('/file-tree/today-count').then(handleResponse),
 };
 
 // 课程 API

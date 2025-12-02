@@ -1,11 +1,48 @@
 const pool = require('../config/db');
 const { success, error } = require('../utils/response');
 
-// 获取所有任务
+// 获取所有任务（支持分页）
 exports.getAllTasks = async (req, res, next) => {
     try {
-        const [rows] = await pool.query('SELECT * FROM daily_tasks ORDER BY id DESC');
-        success(res, rows);
+        const { page, limit } = req.query;
+        
+        // 分页参数
+        const pageNum = parseInt(page) || 1;
+        const pageSize = parseInt(limit) || 100;  // 默认100条
+        const offset = (pageNum - 1) * pageSize;
+        const isPaginated = page && limit;
+
+        // 获取总数
+        let total = 0;
+        if (isPaginated) {
+            const [countResult] = await pool.query('SELECT COUNT(*) as total FROM daily_tasks');
+            total = countResult[0].total;
+        }
+
+        // 获取数据
+        let query = 'SELECT * FROM daily_tasks ORDER BY id DESC';
+        const params = [];
+        
+        if (isPaginated) {
+            query += ' LIMIT ? OFFSET ?';
+            params.push(pageSize, offset);
+        }
+
+        const [rows] = await pool.query(query, params);
+        
+        if (isPaginated) {
+            success(res, {
+                list: rows,
+                pagination: {
+                    page: pageNum,
+                    limit: pageSize,
+                    total,
+                    totalPages: Math.ceil(total / pageSize)
+                }
+            });
+        } else {
+            success(res, rows);
+        }
     } catch (err) {
         next(err);
     }
@@ -34,12 +71,18 @@ exports.getTasksByDate = async (req, res, next) => {
 
         const query = `
       SELECT 
-        t.*,
-        f.title AS subject_name,
+        t.id,
+        t.title AS name,
+        t.subject,
+        t.subject AS subject_name,
+        t.start_date,
+        t.end_date,
+        t.ddl_time,
+        t.duration,
+        t.is_longterm,
         COALESCE(l.is_completed, 0) AS is_completed,
         COALESCE(l.is_excluded, 0) AS is_excluded
       FROM daily_tasks t
-      LEFT JOIN file_tree f ON t.subject = f.id
       LEFT JOIN daily_task_logs l ON t.id = l.task_id AND l.log_date = ?
       WHERE 
         (t.is_longterm = 1 AND t.start_date <= ? AND t.end_date >= ?)
@@ -58,7 +101,7 @@ exports.getTasksByDate = async (req, res, next) => {
 // 创建任务
 exports.createTask = async (req, res, next) => {
     try {
-        const { name, subject, start_date, end_date, ddl_time, is_longterm } = req.body;
+        const { name, subject, start_date, end_date, ddl_time, duration, is_longterm } = req.body;
 
         if (!name || !start_date) {
             return error(res, '任务名称和开始日期为必填项', 400);
@@ -68,8 +111,8 @@ exports.createTask = async (req, res, next) => {
         const finalEndDate = is_longterm ? end_date : start_date;
 
         const [result] = await pool.query(
-            'INSERT INTO daily_tasks (name, subject, start_date, end_date, ddl_time, is_longterm) VALUES (?, ?, ?, ?, ?, ?)',
-            [name, subject || null, start_date, finalEndDate, ddl_time || null, is_longterm ? 1 : 0]
+            'INSERT INTO daily_tasks (title, subject, start_date, end_date, ddl_time, duration, is_longterm) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [name, subject || null, start_date, finalEndDate, ddl_time || null, duration || null, is_longterm ? 1 : 0]
         );
 
         success(res, { id: result.insertId }, '任务创建成功', 201);
@@ -82,13 +125,13 @@ exports.createTask = async (req, res, next) => {
 exports.updateTask = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const { name, subject, start_date, end_date, ddl_time, is_longterm } = req.body;
+        const { name, subject, start_date, end_date, ddl_time, duration, is_longterm } = req.body;
 
         const finalEndDate = is_longterm ? end_date : start_date;
 
         const [result] = await pool.query(
-            'UPDATE daily_tasks SET name = ?, subject = ?, start_date = ?, end_date = ?, ddl_time = ?, is_longterm = ? WHERE id = ? ',
-            [name, subject || null, start_date, finalEndDate, ddl_time || null, is_longterm ? 1 : 0, id]
+            'UPDATE daily_tasks SET title = ?, subject = ?, start_date = ?, end_date = ?, ddl_time = ?, duration = ?, is_longterm = ? WHERE id = ? ',
+            [name, subject || null, start_date, finalEndDate, ddl_time || null, duration || null, is_longterm ? 1 : 0, id]
         );
 
         if (result.affectedRows === 0) {
@@ -128,6 +171,18 @@ exports.toggleTask = async (req, res, next) => {
             return error(res, '日期为必填项', 400);
         }
 
+        // 获取任务信息（包含时长和学科）
+        const [taskRows] = await pool.query(
+            'SELECT * FROM daily_tasks WHERE id = ?',
+            [id]
+        );
+        
+        if (taskRows.length === 0) {
+            return error(res, '任务不存在', 404);
+        }
+        
+        const task = taskRows[0];
+
         // 查询现有记录
         const [existing] = await pool.query(
             'SELECT * FROM daily_task_logs WHERE task_id = ? AND log_date = ?',
@@ -140,7 +195,7 @@ exports.toggleTask = async (req, res, next) => {
             // 切换状态
             isCompleted = existing[0].is_completed ? 0 : 1;
             await pool.query(
-                'UPDATE daily_task_logs SET is_completed = ?  WHERE task_id = ? AND log_date = ?',
+                'UPDATE daily_task_logs SET is_completed = ? WHERE task_id = ? AND log_date = ?',
                 [isCompleted, id, date]
             );
         } else {
@@ -150,6 +205,24 @@ exports.toggleTask = async (req, res, next) => {
                 'INSERT INTO daily_task_logs (task_id, log_date, is_completed) VALUES (?, ?, ?)',
                 [id, date, isCompleted]
             );
+        }
+
+        // 同步学习时长到 study_time_logs
+        if (task.duration && task.duration > 0) {
+            const taskNote = `任务完成: ${task.title || task.name}`;
+            if (isCompleted === 1) {
+                // 任务完成 -> 添加学习时长记录
+                await pool.query(
+                    'INSERT INTO study_time_logs (log_date, subject, duration, note) VALUES (?, ?, ?, ?)',
+                    [date, task.subject, task.duration, taskNote]
+                );
+            } else {
+                // 任务取消完成 -> 删除对应的学习时长记录
+                await pool.query(
+                    'DELETE FROM study_time_logs WHERE log_date = ? AND note = ?',
+                    [date, taskNote]
+                );
+            }
         }
 
         success(res, { is_completed: isCompleted === 1 });

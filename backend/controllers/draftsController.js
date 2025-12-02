@@ -9,16 +9,16 @@ exports.getAllDrafts = async (req, res, next) => {
         let query = `
       SELECT 
         d.*,
-        f. title AS subject_name,
+        f.title AS subject_name,
         (SELECT path FROM v_selectable_subjects WHERE id = d.subject) AS subject_path
       FROM drafts d
-      LEFT JOIN file_tree f ON d.subject = f. id
+      LEFT JOIN file_tree f ON d.subject = f.id
       WHERE 1=1
     `;
         const params = [];
 
         if (status) {
-            query += ' AND d. status = ?';
+            query += ' AND d.status = ?';
             params.push(status);
         }
 
@@ -58,10 +58,10 @@ exports.getDraftById = async (req, res, next) => {
         const query = `
       SELECT 
         d.*,
-        f. title AS subject_name,
+        f.title AS subject_name,
         (SELECT path FROM v_selectable_subjects WHERE id = d.subject) AS subject_path
       FROM drafts d
-      LEFT JOIN file_tree f ON d.subject = f. id
+      LEFT JOIN file_tree f ON d.subject = f.id
       WHERE d.id = ? 
     `;
 

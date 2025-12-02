@@ -10,12 +10,12 @@ exports.getStudyTimeLogs = async (req, res, next) => {
         const params = [];
 
         if (start_date) {
-            query += ' AND log_date >= ?';
+            query += ' AND DATE(CONVERT_TZ(log_date, \'+00:00\', \'+08:00\')) >= ?';
             params.push(start_date);
         }
 
         if (end_date) {
-            query += ' AND log_date <= ? ';
+            query += ' AND DATE(CONVERT_TZ(log_date, \'+00:00\', \'+08:00\')) <= ?';
             params.push(end_date);
         }
 
@@ -40,42 +40,44 @@ exports.getStudyTimeStats = async (req, res, next) => {
 
         let query;
         const params = [];
+        const isSubjectGroup = group_by === 'subject';
+        const dateField = isSubjectGroup ? 's.log_date' : 'log_date';
 
-        if (group_by === 'subject') {
+        if (isSubjectGroup) {
+            // 按学科名称分组，只统计有效学科（存在于 file_tree 且 is_subject=1 的节点）
             query = `
-        SELECT 
-          s.subject,
-          f.title AS subject_name,
-          SUM(s.duration) AS total_duration
-        FROM study_time_logs s
-        LEFT JOIN file_tree f ON s.subject = f.id
-        WHERE 1=1
-      `;
+                SELECT 
+                    s.subject AS subject_name,
+                    SUM(s.duration) AS total_duration
+                FROM study_time_logs s
+                INNER JOIN file_tree f ON s.subject = f.title AND f.is_subject = 1
+                WHERE s.subject IS NOT NULL AND s.subject != ''
+            `;
         } else {
             // 默认按日期分组
             query = `
-        SELECT 
-          log_date,
-          SUM(duration) AS total_duration
-        FROM study_time_logs
-        WHERE 1=1
-      `;
+                SELECT 
+                    DATE(CONVERT_TZ(log_date, '+00:00', '+08:00')) AS log_date,
+                    SUM(duration) AS total_duration
+                FROM study_time_logs
+                WHERE 1=1
+            `;
         }
 
         if (start_date) {
-            query += ' AND log_date >= ?';
+            query += ` AND DATE(CONVERT_TZ(${dateField}, '+00:00', '+08:00')) >= ?`;
             params.push(start_date);
         }
 
         if (end_date) {
-            query += ' AND log_date <= ?';
+            query += ` AND DATE(CONVERT_TZ(${dateField}, '+00:00', '+08:00')) <= ?`;
             params.push(end_date);
         }
 
-        if (group_by === 'subject') {
-            query += ' GROUP BY s.subject, f.title ORDER BY total_duration DESC';
+        if (isSubjectGroup) {
+            query += ' GROUP BY s.subject ORDER BY total_duration DESC';
         } else {
-            query += ' GROUP BY log_date ORDER BY log_date ASC';
+            query += ' GROUP BY DATE(CONVERT_TZ(log_date, \'+00:00\', \'+08:00\')) ORDER BY log_date ASC';
         }
 
         const [rows] = await pool.query(query, params);
@@ -88,15 +90,23 @@ exports.getStudyTimeStats = async (req, res, next) => {
 // 记录学习时间
 exports.createStudyTimeLog = async (req, res, next) => {
     try {
-        const { log_date, subject, duration } = req.body;
+        const { log_date, subject, duration, note } = req.body;
 
-        if (!log_date || !duration) {
-            return error(res, '日期和时长为必填项', 400);
+        if (!log_date) {
+            return error(res, '日期为必填项', 400);
+        }
+
+        if (!subject) {
+            return error(res, '学科为必填项', 400);
+        }
+
+        if (!duration || duration <= 0) {
+            return error(res, '学习时长为必填项', 400);
         }
 
         const [result] = await pool.query(
-            'INSERT INTO study_time_logs (log_date, subject, duration) VALUES (?, ?, ? )',
-            [log_date, subject || null, duration]
+            'INSERT INTO study_time_logs (log_date, subject, duration, note) VALUES (?, ?, ?, ?)',
+            [log_date, subject, duration, note || null]
         );
 
         success(res, { id: result.insertId }, '学习时间记录成功', 201);
@@ -117,6 +127,29 @@ exports.deleteStudyTimeLog = async (req, res, next) => {
         }
 
         success(res, null, '记录删除成功');
+    } catch (err) {
+        next(err);
+    }
+};
+
+// 获取指定日期的学习总时长
+exports.getDailyTotal = async (req, res, next) => {
+    try {
+        const { date } = req.params;
+        
+        if (!date) {
+            return error(res, '日期为必填项', 400);
+        }
+
+        const [rows] = await pool.query(
+            'SELECT COALESCE(SUM(duration), 0) as total_duration FROM study_time_logs WHERE log_date = ?',
+            [date]
+        );
+
+        success(res, { 
+            date,
+            total_duration: rows[0].total_duration 
+        });
     } catch (err) {
         next(err);
     }

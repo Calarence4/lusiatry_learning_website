@@ -533,20 +533,34 @@ export default function KnowledgeBase() {
 
                         {/* 底部保存按钮 */}
                         <div className="p-4 border-t border-white/40 bg-white/20 flex gap-3 shrink-0">
-                            <button
-                                onClick={handleSaveAsNote}
-                                disabled={saving || !editContent.trim()}
-                                className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                            >
-                                <Save size={16} /> 保存为笔记
-                            </button>
-                            <button
-                                onClick={handleSaveAsDraft}
-                                disabled={saving || !editContent.trim()}
-                                className="flex-1 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                            >
-                                <Inbox size={16} /> 保存为草稿
-                            </button>
+                            {activeFile ? (
+                                // 选中文件时：显示保存按钮（更新当前文件）
+                                <button
+                                    onClick={handleSaveToFile}
+                                    disabled={saving || !editContent.trim()}
+                                    className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                >
+                                    <Save size={16} /> {saving ? '保存中...' : '保存'}
+                                </button>
+                            ) : (
+                                // 未选中文件时：显示新建笔记/草稿按钮
+                                <>
+                                    <button
+                                        onClick={handleSaveAsNote}
+                                        disabled={saving || !editContent.trim()}
+                                        className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                    >
+                                        <Save size={16} /> 保存为笔记
+                                    </button>
+                                    <button
+                                        onClick={handleSaveAsDraft}
+                                        disabled={saving || !editContent.trim()}
+                                        className="flex-1 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                    >
+                                        <Inbox size={16} /> 保存为草稿
+                                    </button>
+                                </>
+                            )}
                         </div>
                     </div>
                 </div>

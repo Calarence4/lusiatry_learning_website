@@ -4,7 +4,7 @@ import { format, differenceInMinutes, set } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
 import LearningRecorder from '../components/LearningRecorder';
 import { BookOpen, Globe, HelpCircle, CheckCircle2, Circle, CalendarRange, AlertTriangle, MoreHorizontal, Trophy, Zap, Sparkles } from 'lucide-react';
-import { problemsApi, draftsApi, tasksApi } from '../api';
+import { problemsApi, tasksApi, fileTreeApi, studyTimeApi } from '../api';
 
 
 
@@ -26,7 +26,7 @@ const BlogPostCard = () => (
     </div>
 );
 
-const TaskItemInner = ({ task, completed, onToggle, compact = false, isUrgent = false, isEmpty = false }) => {
+const TaskItemInner = ({ task, completed, onToggle, compact = false, isUrgent = false, isOverdue = false, isEmpty = false }) => {
     if (isEmpty) {
         return (
             <div className="flex flex-col justify-center items-center h-full w-full p-5 bg-white/20 border-dashed border border-white/40 rounded-xl">
@@ -44,32 +44,32 @@ const TaskItemInner = ({ task, completed, onToggle, compact = false, isUrgent = 
             onClick={(e) => { e.stopPropagation(); onToggle(task.id); }}
             className={`flex flex-col justify-center h-full w-full cursor-pointer transition-colors duration-150 relative overflow-hidden
         ${compact ? 'px-4 py-1' : 'p-5'}
-        ${isUrgent && !isDone ? 'bg-red-500/10 hover:bg-red-500/20' : 'bg-white/40 hover:bg-white/60'}
+        ${isOverdue && !isDone ? 'bg-red-500/20 hover:bg-red-500/30' : (isUrgent && !isDone ? 'bg-red-500/10 hover:bg-red-500/20' : 'bg-white/40 hover:bg-white/60')}
       `}
         >
-            {isUrgent && !isDone && <div className="absolute left-0 top-0 bottom-0 w-1 bg-red-500"></div>}
+            {(isUrgent || isOverdue) && !isDone && <div className={`absolute left-0 top-0 bottom-0 w-1 ${isOverdue ? 'bg-red-600' : 'bg-red-500'}`}></div>}
 
             <div className="flex justify-between items-start relative z-10">
                 <div className="flex-1 min-w-0 mr-2">
                     <div className="flex items-center gap-2">
-                        <span className={`font-bold truncate ${compact ? 'text-xs' : 'text-sm'} ${isDone ? 'text-emerald-700 line-through opacity-60' : (isUrgent ? 'text-red-700 font-extrabold' : 'text-slate-700')}`}>
+                        <span className={`font-bold truncate ${compact ? 'text-xs' : 'text-sm'} ${isDone ? 'line-through' : ''} ${isOverdue && !isDone ? 'text-red-700 line-through' : (isUrgent && !isDone ? 'text-red-700 font-extrabold' : 'text-slate-700')}`}>
                             {task.name}
                         </span>
                         {task.ddl_time && !isDone && (
                             <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap flex items-center gap-1 
-                 ${isUrgent ? 'bg-red-600 text-white animate-pulse' : 'text-red-500 bg-white/80 border border-white/60'}`}>
-                                {isUrgent && <Zap size={8} className="fill-current" />}
+                 ${isOverdue ? 'bg-red-600 text-white' : (isUrgent ? 'bg-red-600 text-white animate-pulse' : 'text-red-500 bg-white/80 border border-white/60')}`}>
+                                {(isUrgent || isOverdue) && <Zap size={8} className="fill-current" />}
                                 {task.ddl_time.slice(0, 5)}
                             </span>
                         )}
                     </div>
                     {task.subject_name && !compact && (
-                        <div className={`flex items-center gap-1 text-[10px] mt-1 ${isUrgent ? 'text-red-600 font-medium' : 'text-slate-500'}`}>
+                        <div className={`flex items-center gap-1 text-[10px] mt-1 ${isOverdue && !isDone ? 'text-red-600 font-medium' : (isUrgent && !isDone ? 'text-red-600 font-medium' : 'text-slate-500')}`}>
                             <CalendarRange size={10} /> <span>{task.subject_name}</span>
                         </div>
                     )}
                 </div>
-                {isDone ? <CheckCircle2 className="text-emerald-500 shrink-0" size={compact ? 16 : 20} /> : <Circle className={`${isUrgent ? 'text-red-500' : 'text-slate-400/80'} shrink-0`} size={compact ? 16 : 20} />}
+                {isDone ? <CheckCircle2 className="text-emerald-500 shrink-0" size={compact ? 16 : 20} /> : <Circle className={`${(isUrgent || isOverdue) ? 'text-red-500' : 'text-slate-400/80'} shrink-0`} size={compact ? 16 : 20} />}
             </div>
         </motion.div>
     );
@@ -83,7 +83,9 @@ export default function Home() {
     const [pendingQuestionsCount, setPendingQuestionsCount] = useState(0);
     const [recentQuestions, setRecentQuestions] = useState([]);
     const [pendingNotesCount, setPendingNotesCount] = useState(0);
+    const [todayNotesCount, setTodayNotesCount] = useState(0);
     const [tasksData, setTasksData] = useState([]);
+    const [todayFocusTime, setTodayFocusTime] = useState(0);
 
     useEffect(() => {
         async function fetchData() {
@@ -91,16 +93,46 @@ export default function Home() {
                 setLoading(true);
                 const todayStr = format(today, 'yyyy-MM-dd');
 
-                const [problemsData, draftsData, todayTasks] = await Promise.all([
-                    problemsApi.getAll({ status: '0' }),
-                    draftsApi.getAll({ status: 'pending' }),
-                    tasksApi.getByDate(todayStr)
+                const [problemsData, todayTasks, focusTimeData, todayNotesData] = await Promise.all([
+                    problemsApi.getAll(),
+                    tasksApi.getByDate(todayStr),
+                    studyTimeApi.getDailyTotal(todayStr),
+                    fileTreeApi.getTodayCount()
                 ]);
 
-                setPendingQuestionsCount(problemsData?.length || 0);
-                setRecentQuestions((problemsData || []).slice(0, 2));
-                setPendingNotesCount(draftsData?.length || 0);
+                // 过滤真正未解决的问题（没有 is_solved 且没有 answer）
+                const unsolvedProblems = (problemsData || []).filter(p => !p.is_solved && !p.answer);
+                setPendingQuestionsCount(unsolvedProblems.length);
+                setRecentQuestions(unsolvedProblems.slice(0, 2));
                 setTasksData(todayTasks || []);
+                setTodayFocusTime(focusTimeData?.total_duration || 0);
+                setTodayNotesCount(todayNotesData?.count || 0);
+                
+                // 初始化已完成任务的状态
+                const completedState = {};
+                (todayTasks || []).forEach(task => {
+                    if (task.is_completed) {
+                        completedState[task.id] = true;
+                    }
+                });
+                setCompleted(completedState);
+                
+                // 从知识库草稿箱获取待整理笔记数
+                const draftBox = await fileTreeApi.ensureDraftBox();
+                const tree = await fileTreeApi.getTree();
+                const findDraftBoxChildren = (nodes) => {
+                    for (const node of nodes) {
+                        if (node.id === draftBox.id) {
+                            return node.children?.length || 0;
+                        }
+                        if (node.children) {
+                            const count = findDraftBoxChildren(node.children);
+                            if (count >= 0) return count;
+                        }
+                    }
+                    return 0;
+                };
+                setPendingNotesCount(findDraftBoxChildren(tree || []));
             } catch (err) {
                 console.error('加载数据失败:', err);
             } finally {
@@ -118,27 +150,51 @@ export default function Home() {
     const warningState = useMemo(() => {
         const now = new Date();
         let lessThan1h = 0; let lessThan2h = 0;
+        const overdueIds = [];
+        const urgentIds = [];
+        
         visibleTasks.forEach(task => {
             if (!task.ddl_time) return;
             const [hours, minutes] = task.ddl_time.split(':');
             const deadlineDate = set(now, { hours: parseInt(hours), minutes: parseInt(minutes), seconds: 0 });
             const diffMin = differenceInMinutes(deadlineDate, now);
-            if (diffMin > 0 && diffMin < 60) lessThan1h++;
-            if (diffMin > 0 && diffMin < 120) lessThan2h++;
+            
+            if (diffMin < 0) {
+                // 已超时
+                overdueIds.push(task.id);
+            } else if (diffMin < 60) {
+                lessThan1h++;
+                urgentIds.push(task.id);
+            } else if (diffMin < 120) {
+                lessThan2h++;
+            }
         });
-        const isGlobalWarning = (lessThan1h >= 2) || (lessThan1h >= 1 && lessThan2h >= 2);
+        
+        const isGlobalWarning = (lessThan1h >= 2) || (lessThan1h >= 1 && lessThan2h >= 2) || overdueIds.length > 0;
         return {
-            isGlobalWarning, lessThan1hIds: visibleTasks.filter(t => {
-                if (!t.deadline) return false;
-                const [h, m] = t.deadline.split(':');
-                const d = set(now, { hours: parseInt(h), minutes: parseInt(m) });
-                return differenceInMinutes(d, now) < 60 && differenceInMinutes(d, now) > 0;
-            }).map(t => t.id)
+            isGlobalWarning,
+            overdueIds,
+            urgentIds
         };
     }, [visibleTasks]);
 
     const isAllFinished = visibleTasks.length === 0;
-    const toggleHomeTask = (id) => setCompleted(prev => ({ ...prev, [id]: true }));
+    
+    const toggleHomeTask = async (id) => {
+        const todayStr = format(today, 'yyyy-MM-dd');
+        try {
+            const result = await tasksApi.toggle(id, todayStr);
+            if (result.is_completed) {
+                setCompleted(prev => ({ ...prev, [id]: true }));
+                // 刷新今日专注时间
+                const focusTimeData = await studyTimeApi.getDailyTotal(todayStr);
+                setTodayFocusTime(focusTimeData?.total_duration || 0);
+            }
+        } catch (err) {
+            console.error('标记任务失败:', err);
+            alert('操作失败: ' + err.message);
+        }
+    };
 
     const renderTasks = () => {
         if (isAllFinished) {
@@ -164,15 +220,28 @@ export default function Home() {
             );
         }
 
+        // 对任务排序：超时的优先，然后是紧急的
+        const sortedTasks = [...visibleTasks].sort((a, b) => {
+            const aOverdue = warningState.overdueIds.includes(a.id);
+            const bOverdue = warningState.overdueIds.includes(b.id);
+            const aUrgent = warningState.urgentIds.includes(a.id);
+            const bUrgent = warningState.urgentIds.includes(b.id);
+            
+            if (aOverdue && !bOverdue) return -1;
+            if (!aOverdue && bOverdue) return 1;
+            if (aUrgent && !bUrgent) return -1;
+            if (!aUrgent && bUrgent) return 1;
+            return 0;
+        });
+
         const BASE_SLOTS = 4;
-        const slotsToRender = Math.max(BASE_SLOTS, Math.min(visibleTasks.length > 8 ? 3 : visibleTasks.length, BASE_SLOTS));
-        const shouldOverflow = visibleTasks.length > 8;
+        const shouldOverflow = sortedTasks.length > 8;
         const gridBlocks = [];
         const loopCount = shouldOverflow ? 3 : 4;
 
         for (let i = 0; i < loopCount; i++) {
-            const primaryTask = visibleTasks[i];
-            const secondaryTask = visibleTasks[i + BASE_SLOTS];
+            const primaryTask = sortedTasks[i];
+            const secondaryTask = sortedTasks[i + BASE_SLOTS];
 
             if (!primaryTask) {
                 gridBlocks.push(
@@ -183,29 +252,35 @@ export default function Home() {
                 continue;
             }
 
-            const isPrimaryUrgent = warningState.lessThan1hIds.includes(primaryTask.id);
-            const isSecondaryUrgent = secondaryTask && warningState.lessThan1hIds.includes(secondaryTask.id);
-            const hasUrgentInBlock = isPrimaryUrgent || isSecondaryUrgent;
+            const isPrimaryOverdue = warningState.overdueIds.includes(primaryTask.id);
+            const isPrimaryUrgent = warningState.urgentIds.includes(primaryTask.id);
+            const isSecondaryOverdue = secondaryTask && warningState.overdueIds.includes(secondaryTask.id);
+            const isSecondaryUrgent = secondaryTask && warningState.urgentIds.includes(secondaryTask.id);
+            
+            const hasOverdueInBlock = isPrimaryOverdue || isSecondaryOverdue;
+            const hasUrgentInBlock = isPrimaryUrgent || isSecondaryUrgent || hasOverdueInBlock;
 
             gridBlocks.push(
                 <div key={`block-${primaryTask.id}`}
                     className={`h-full rounded-xl transition-all duration-200 flex flex-col overflow-hidden
-            ${hasUrgentInBlock
-                            ? 'bg-white/80 border border-red-300/50 shadow-sm scale-[1.01]'
-                            : 'bg-white/60 border border-white/60 shadow-sm hover:bg-white/70'
+            ${hasOverdueInBlock && !secondaryTask
+                            ? 'bg-red-100/80 border border-red-300/60 shadow-sm'
+                            : hasUrgentInBlock
+                                ? 'bg-white/80 border border-red-300/50 shadow-sm scale-[1.01]'
+                                : 'bg-white/60 border border-white/60 shadow-sm hover:bg-white/70'
                         }`}
                 >
                     {secondaryTask ? (
                         <>
-                            <div className={`flex-1 border-b ${hasUrgentInBlock ? 'border-red-200/50' : 'border-white/40'}`}>
-                                <TaskItemInner task={primaryTask} completed={completed} onToggle={toggleHomeTask} compact={true} isUrgent={isPrimaryUrgent} />
+                            <div className={`flex-1 border-b ${isPrimaryOverdue ? 'bg-red-100/80 border-red-200/50' : (hasUrgentInBlock ? 'border-red-200/50' : 'border-white/40')}`}>
+                                <TaskItemInner task={primaryTask} completed={completed} onToggle={toggleHomeTask} compact={true} isUrgent={isPrimaryUrgent} isOverdue={isPrimaryOverdue} />
                             </div>
-                            <div className="flex-1">
-                                <TaskItemInner task={secondaryTask} completed={completed} onToggle={toggleHomeTask} compact={true} isUrgent={isSecondaryUrgent} />
+                            <div className={`flex-1 ${isSecondaryOverdue ? 'bg-red-100/80' : ''}`}>
+                                <TaskItemInner task={secondaryTask} completed={completed} onToggle={toggleHomeTask} compact={true} isUrgent={isSecondaryUrgent} isOverdue={isSecondaryOverdue} />
                             </div>
                         </>
                     ) : (
-                        <TaskItemInner task={primaryTask} completed={completed} onToggle={toggleHomeTask} isUrgent={isPrimaryUrgent} />
+                        <TaskItemInner task={primaryTask} completed={completed} onToggle={toggleHomeTask} isUrgent={isPrimaryUrgent} isOverdue={isPrimaryOverdue} />
                     )}
                 </div>
             );
@@ -215,7 +290,7 @@ export default function Home() {
             gridBlocks.push(
                 <div key="overflow-block" onClick={() => navigate('/checkin')} className="h-full bg-white/40 rounded-xl border border-dashed border-white/60 flex flex-col items-center justify-center cursor-pointer hover:bg-white/60 transition-all group">
                     <MoreHorizontal size={32} className="text-slate-400 group-hover:text-slate-600 mb-1" />
-                    <span className="text-xs font-bold text-slate-400 group-hover:text-slate-600">还有 {visibleTasks.length - 6} 个任务</span>
+                    <span className="text-xs font-bold text-slate-400 group-hover:text-slate-600">还有 {sortedTasks.length - 6} 个任务</span>
                 </div>
             );
         }
@@ -286,11 +361,13 @@ export default function Home() {
                         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                             <div className="bg-white/60 p-4 rounded-xl border border-white/60 shadow-sm hover:bg-white/80 transition-all duration-200">
                                 <div className="text-sm text-slate-500 mb-1 font-medium">今日专注</div>
-                                <div className="text-2xl font-bold text-slate-800">-- h -- m</div>
+                                <div className="text-2xl font-bold text-slate-800">
+                                    {Math.floor(todayFocusTime / 60)}h {todayFocusTime % 60}m
+                                </div>
                             </div>
                             <div className="bg-white/60 p-4 rounded-xl border border-white/60 shadow-sm hover:bg-white/80 transition-all duration-200">
                                 <div className="text-sm text-slate-500 mb-1 font-medium">知识库新增</div>
-                                <div className="text-2xl font-bold text-slate-800">-- <span className="text-xs font-normal text-slate-500">篇</span></div>
+                                <div className="text-2xl font-bold text-slate-800">{todayNotesCount} <span className="text-xs font-normal text-slate-500">篇</span></div>
                             </div>
                             <div className="bg-white/60 p-4 rounded-xl border border-white/60 shadow-sm hover:bg-white/80 transition-all duration-200">
                                 <div className="text-sm text-slate-500 mb-1 font-medium">待归档笔记</div>
@@ -318,7 +395,7 @@ export default function Home() {
                                     recentQuestions.map(q => (
                                         <li key={q.id} className="flex gap-2 items-start">
                                             <span className="text-red-400 mt-1 font-bold">? </span>
-                                            <span className={`line-clamp-1 ${q.is_solved ? 'text-slate-400 line-through' : ''}`}>{q.problem}</span>
+                                            <span className="line-clamp-1">{q.problem}</span>
                                         </li>
                                     ))
                                 ) : (

@@ -1,8 +1,70 @@
 # Lusiatry 学习网站 - 性能优化方案
 
-> 文档版本: 1.0  
+> 文档版本: 1.2  
 > 创建日期: 2025年  
-> 状态: 待实施
+> 更新日期: 2025年12月1日  
+> 状态: 大部分已实施
+
+---
+
+## 实施进度
+
+| 优化项 | 状态 | 备注 |
+|--------|------|------|
+| 路由懒加载 | ✅ 已完成 | App.jsx - React.lazy() |
+| Vite构建优化 | ✅ 已完成 | vite.config.js - manualChunks函数 |
+| 响应压缩 | ✅ 已完成 | compression中间件 |
+| 数据库索引 | ✅ 已完成 | indexes_simple.sql |
+| N+1查询修复 | ✅ 已完成 | fileTreeController CTE优化 |
+| 组件拆分 | ✅ 已完成 | Course/ 模块化拆分 |
+| React Query | ✅ 已完成 | 请求缓存 hooks |
+| API分页 | ✅ 已完成 | courses/tasks 分页支持 |
+
+### 已完成优化详情
+
+#### 1. Course.jsx 模块拆分 (2025-12-01)
+原1146行大文件已拆分为：
+```
+src/pages/Course/
+├── index.jsx              # 主组件 (~480行)
+├── constants.js           # 颜色常量和工具函数
+├── EditableProgress.jsx   # 可编辑进度组件
+├── EditCourseModal.jsx    # 编辑课程模态框
+└── useCourseData.js       # 自定义Hook - 数据管理
+```
+
+#### 2. Vite构建分包 (2025-12-01)
+构建产物分析：
+- `vendor-react` - React核心 (357KB)
+- `vendor-ui` - UI库 (114KB)
+- `vendor-utils` - 工具库 (60KB)
+- 页面组件按需加载
+
+#### 3. React Query 集成 (2025-12-01)
+```
+src/hooks/
+├── index.js           # 统一导出
+├── useCourses.js      # 课程数据hooks
+├── useSubjects.js     # 学科数据hooks
+└── useTasks.js        # 任务数据hooks
+```
+配置特性：
+- 5分钟 staleTime（数据新鲜期）
+- 10分钟 gcTime（缓存保留）
+- 自动缓存共享，避免重复请求
+- 乐观更新支持
+
+#### 4. API 分页支持 (2025-12-01)
+后端支持：
+- `GET /api/courses?page=1&limit=20` - 课程分页
+- `GET /api/tasks?page=1&limit=20` - 任务分页
+- 返回 `{ list, pagination: { page, limit, total, totalPages } }`
+- 向后兼容：不传分页参数返回全部数据
+
+前端 hooks：
+- `useCoursesPaginated()` - 分页查询
+- `useCoursesInfinite()` - 无限滚动
+- `useTasksPaginated()` - 任务分页
 
 ---
 

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isBefore, isToday, isFuture, startOfDay, addDays, parseISO } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isBefore, isToday, isFuture, startOfDay, addDays, parseISO, getDay } from 'date-fns';
 import { Plus, CheckCircle2, Circle, Ban, Trash2, Clock, CalendarRange, List, XCircle, Calendar, Timer, ArrowLeft, Tag } from 'lucide-react';
 import { Link } from 'react-router-dom';
 // ============================================
@@ -27,7 +27,7 @@ export default function CheckIn() {
     const [completedLog, setCompletedLog] = useState({});
     const [exceptionLog, setExceptionLog] = useState({});
     const [newTask, setNewTask] = useState({
-        title: '', category: '', deadline: '', isRecurring: false, recurType: 'duration', durationDays: 7, startDate: '', endDate: ''
+        title: '', category: '', deadline: '', duration: '', isRecurring: false, recurType: 'duration', durationDays: 7, startDate: '', endDate: ''
     });
 
     // ============================================
@@ -99,6 +99,11 @@ export default function CheckIn() {
     const monthStart = startOfMonth(selectedDate);
     const monthEnd = endOfMonth(selectedDate);
     const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
+    
+    // 计算月初第一天是星期几 (0=周日, 1=周一, ...)
+    const firstDayOfWeek = getDay(monthStart);
+    // 生成前置空白占位
+    const emptyDays = Array(firstDayOfWeek).fill(null);
 
     // ============================================
     // 【修改】getTasksForDay 使用 allTasks
@@ -173,16 +178,14 @@ export default function CheckIn() {
             finalEnd = format(selectedDate, 'yyyy-MM-dd');
         }
 
-        // 查找学科 ID
-        const subjectItem = subjects.find(s => s.title === newTask.category);
-
         try {
             const taskData = {
                 name: newTask.title,
-                subject: subjectItem?.id || null,
+                subject: newTask.category || null,  // 直接传递学科名称
                 start_date: finalStart,
                 end_date: finalEnd,
                 ddl_time: newTask.deadline || null,
+                duration: newTask.duration ? parseInt(newTask.duration) : null,
                 is_longterm: newTask.isRecurring
             };
 
@@ -201,6 +204,7 @@ export default function CheckIn() {
                 ...prev,
                 title: '',
                 deadline: '',
+                duration: '',
                 isRecurring: false,
                 category: ''
             }));
@@ -308,6 +312,10 @@ export default function CheckIn() {
                         {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
                             <div key={d} className="text-center text-xs font-bold text-slate-400 uppercase mb-1">{d}</div>
                         ))}
+                        {/* 前置空白占位 */}
+                        {emptyDays.map((_, index) => (
+                            <div key={`empty-${index}`} className="h-20"></div>
+                        ))}
                         {daysInMonth.map(day => {
                             const isSelected = isSameDay(day, selectedDate);
                             const dayStr = format(day, 'yyyy-MM-dd');
@@ -353,6 +361,17 @@ export default function CheckIn() {
                             )}
                             {activeTasks.map(task => {
                                 const isDone = completedLog[`${task.id}-${format(selectedDate, 'yyyy-MM-dd')}`];
+                                // 判断是否超时
+                                const now = new Date();
+                                const isToday = format(selectedDate, 'yyyy-MM-dd') === format(now, 'yyyy-MM-dd');
+                                let isOverdue = false;
+                                if (task.ddl_time && isToday && !isDone) {
+                                    const [hours, minutes] = task.ddl_time.split(':');
+                                    const deadlineDate = new Date();
+                                    deadlineDate.setHours(parseInt(hours), parseInt(minutes), 0);
+                                    isOverdue = now > deadlineDate;
+                                }
+                                
                                 return (
                                     <div
                                         key={task.id}
@@ -360,17 +379,17 @@ export default function CheckIn() {
                                         className={`p-3 rounded-xl border group flex items-center justify-between relative transition-all ${isDone ? 'bg-emerald-50/60 border-emerald-100/60' : 'bg-white/40 border-white/40'} ${isLocked ? 'opacity-60' : 'cursor-pointer hover:bg-white/80 hover:shadow-sm'}`}
                                     >
                                         <div className="flex-1 min-w-0 mr-2">
-                                            <span className={`font-bold text-sm block truncate ${isDone ? 'text-emerald-700 line-through' : 'text-slate-700'}`}>
+                                            <span className={`font-bold text-sm block truncate ${isDone ? 'text-emerald-700 line-through' : (isOverdue ? 'text-red-600 line-through' : 'text-slate-700')}`}>
                                                 {task.name}
                                             </span>
                                             {task.ddl_time && (
-                                                <div className="flex items-center gap-1 text-[10px] text-slate-500 mt-0.5">
+                                                <div className={`flex items-center gap-1 text-[10px] mt-0.5 ${isOverdue ? 'text-red-500 font-medium' : 'text-slate-500'}`}>
                                                     <Timer size={10} /> {task.ddl_time.slice(0, 5)} 截止
                                                 </div>
                                             )}
                                         </div>
                                         <div className="flex items-center gap-2">
-                                            {isDone ? <CheckCircle2 className="text-emerald-500" size={18} /> : <Circle className="text-slate-400" size={18} />}
+                                            {isDone ? <CheckCircle2 className="text-emerald-500" size={18} /> : <Circle className={isOverdue ? 'text-red-400' : 'text-slate-400'} size={18} />}
                                             {!isLocked && (
                                                 <button
                                                     onClick={(e) => { e.stopPropagation(); removeTaskFromDay(task.id); }}
@@ -400,13 +419,14 @@ export default function CheckIn() {
                                 onChange={e => setNewTask({ ...newTask, title: e.target.value })}
                             />
 
-                            <div className="flex gap-2">
+                            <div className="flex gap-2 items-end">
                                 {/* 学科输入框 */}
-                                <div className="flex-1">
+                                <div className="flex-1 flex flex-col gap-1">
+                                    <span className="text-[10px] text-slate-400 font-medium leading-none">学科</span>
                                     <input
                                         list="simple-checkin-subjects"
-                                        className="w-full bg-slate-800/50 border border-slate-700/50 rounded-lg p-2 text-sm text-white outline-none focus:bg-slate-800 focus:border-indigo-500 transition-all"
-                                        placeholder="学科"
+                                        className="w-full h-9 bg-slate-800/50 border border-slate-700/50 rounded-lg px-2 text-sm text-white outline-none focus:bg-slate-800 focus:border-indigo-500 transition-all"
+                                        placeholder="选择学科"
                                         value={newTask.category}
                                         onChange={e => setNewTask({ ...newTask, category: e.target.value })}
                                     />
@@ -415,15 +435,30 @@ export default function CheckIn() {
                                     </datalist>
                                 </div>
 
-                                {/* 时间输入框 - 点击文字直接弹出时间选择 */}
-                                <input
-                                    type="time"
-                                    className="w-24 bg-slate-800/50 border border-slate-700/50 rounded-lg p-2 text-sm text-white text-center outline-none focus:bg-slate-800 focus:border-indigo-500 transition-all cursor-pointer [&::-webkit-calendar-picker-indicator]:hidden"
-                                    placeholder="--:--"
-                                    value={newTask.deadline}
-                                    onChange={e => setNewTask({ ...newTask, deadline: e.target.value })}
-                                    onClick={e => e.target.showPicker()}
-                                />
+                                {/* 截止时间输入框 */}
+                                <div className="flex flex-col gap-1">
+                                    <span className="text-[10px] text-slate-400 font-medium leading-none">截止时间</span>
+                                    <input
+                                        type="time"
+                                        className="w-24 h-9 bg-slate-800/50 border border-slate-700/50 rounded-lg px-2 text-sm text-white text-center outline-none focus:bg-slate-800 focus:border-indigo-500 transition-all cursor-pointer [&::-webkit-calendar-picker-indicator]:hidden"
+                                        value={newTask.deadline}
+                                        onChange={e => setNewTask({ ...newTask, deadline: e.target.value })}
+                                        onClick={e => e.target.showPicker()}
+                                    />
+                                </div>
+
+                                {/* 预期时长输入框 */}
+                                <div className="flex flex-col gap-1">
+                                    <span className="text-[10px] text-slate-400 font-medium leading-none">时长(分)</span>
+                                    <input
+                                        type="number"
+                                        className="w-20 h-9 bg-slate-800/50 border border-slate-700/50 rounded-lg px-2 text-sm text-white text-center outline-none focus:bg-slate-800 focus:border-indigo-500 transition-all"
+                                        placeholder="--"
+                                        min="1"
+                                        value={newTask.duration}
+                                        onChange={e => setNewTask({ ...newTask, duration: e.target.value })}
+                                    />
+                                </div>
                             </div>
 
                             <div className="flex items-center gap-2 py-1">

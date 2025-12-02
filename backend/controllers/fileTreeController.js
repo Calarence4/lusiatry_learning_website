@@ -160,24 +160,40 @@ exports.delete = async (req, res, next) => {
             return error(res, '系统文件夹不可删除', 403);
         }
 
-        // 递归删除
-        const deleteRecursive = async (nodeId) => {
-            const [children] = await pool.query(
-                'SELECT id FROM file_tree WHERE parent_id = ? ',
-                [nodeId]
-            );
-
-            for (const child of children) {
-                await deleteRecursive(child.id);
-            }
-
-            await pool.query('DELETE FROM file_tree WHERE id = ?', [nodeId]);
-        };
-
-        await deleteRecursive(id);
+        // 使用递归CTE一次性获取所有后代节点并删除 - 性能优化
+        // 注意：MySQL 8.0+ 支持递归CTE
+        await pool.query(`
+            WITH RECURSIVE descendants AS (
+                SELECT id FROM file_tree WHERE id = ?
+                UNION ALL
+                SELECT ft.id FROM file_tree ft
+                INNER JOIN descendants d ON ft.parent_id = d.id
+            )
+            DELETE FROM file_tree WHERE id IN (SELECT id FROM descendants)
+        `, [id]);
 
         success(res, { message: '删除成功' });
     } catch (err) {
+        // 如果MySQL版本不支持递归CTE，回退到原有方法
+        if (err.code === 'ER_PARSE_ERROR' || err.errno === 1064) {
+            try {
+                const deleteRecursive = async (nodeId) => {
+                    const [children] = await pool.query(
+                        'SELECT id FROM file_tree WHERE parent_id = ?',
+                        [nodeId]
+                    );
+                    for (const child of children) {
+                        await deleteRecursive(child.id);
+                    }
+                    await pool.query('DELETE FROM file_tree WHERE id = ?', [nodeId]);
+                };
+                await deleteRecursive(req.params.id);
+                return success(res, { message: '删除成功' });
+            } catch (fallbackErr) {
+                console.error('delete fallback error:', fallbackErr);
+                return next(fallbackErr);
+            }
+        }
         console.error('delete error:', err);
         next(err);
     }
@@ -202,6 +218,54 @@ exports.ensureDraftBox = async (req, res, next) => {
         }
     } catch (err) {
         console.error('ensureDraftBox error:', err);
+        next(err);
+    }
+};
+
+// 获取今日新增笔记数量（不包括草稿箱内的）
+exports.getTodayCount = async (req, res, next) => {
+    try {
+        // 获取草稿箱ID
+        const [draftBox] = await pool.query(
+            'SELECT id FROM file_tree WHERE is_system = 1 AND title = ?',
+            ['草稿箱']
+        );
+        const draftBoxId = draftBox.length > 0 ? draftBox[0].id : null;
+
+        // 获取草稿箱下所有文件的ID（包括子文件夹中的）
+        let excludeIds = [];
+        if (draftBoxId) {
+            const getDescendants = async (parentId) => {
+                const [children] = await pool.query(
+                    'SELECT id FROM file_tree WHERE parent_id = ?',
+                    [parentId]
+                );
+                let ids = [parentId];
+                for (const child of children) {
+                    const childIds = await getDescendants(child.id);
+                    ids = ids.concat(childIds);
+                }
+                return ids;
+            };
+            excludeIds = await getDescendants(draftBoxId);
+        }
+
+        // 查询今日新增的文件（type = 'file'，不在草稿箱内）
+        let query = `
+            SELECT COUNT(*) as count 
+            FROM file_tree 
+            WHERE type = 'file' 
+            AND DATE(created_at) = CURDATE()
+        `;
+        
+        if (excludeIds.length > 0) {
+            query += ` AND id NOT IN (${excludeIds.join(',')}) AND (parent_id IS NULL OR parent_id NOT IN (${excludeIds.join(',')}))`;
+        }
+
+        const [rows] = await pool.query(query);
+        success(res, { count: rows[0].count });
+    } catch (err) {
+        console.error('getTodayCount error:', err);
         next(err);
     }
 };
