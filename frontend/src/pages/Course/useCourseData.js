@@ -1,12 +1,21 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { coursesApi, subjectsApi } from '../../api';
+import { useToast } from '../../components/Toast';
 
 export default function useCourseData() {
+    const toast = useToast();
     const [courses, setCourses] = useState([]);
     const [subjects, setSubjects] = useState([]);
     const [loading, setLoading] = useState(true);
     const [editingCourse, setEditingCourse] = useState(null);
     const [showEditModal, setShowEditModal] = useState(false);
+    
+    // 状态筛选
+    const [statusFilter, setStatusFilter] = useState('all'); // all, not_started, in_progress, completed, paused
+    
+    // 课程日志
+    const [courseLogs, setCourseLogs] = useState({});  // { courseId: [logs] }
+    const [expandedCourseId, setExpandedCourseId] = useState(null);  // 当前展开显示日志的课程
 
     // 新课程表单
     const [newCourse, setNewCourse] = useState({
@@ -67,12 +76,50 @@ export default function useCourseData() {
     // 统计数据
     const stats = useMemo(() => {
         const total = courses.length;
-        const completed = courses.filter(c => c.finished_lessons >= c.total_lessons).length;
-        const inProgress = total - completed;
+        const completed = courses.filter(c => c.status === 'completed' || c.finished_lessons >= c.total_lessons).length;
+        const inProgress = courses.filter(c => c.status === 'in_progress' || (c.finished_lessons > 0 && c.finished_lessons < c.total_lessons)).length;
+        const notStarted = courses.filter(c => c.status === 'not_started' || c.finished_lessons === 0).length;
+        const paused = courses.filter(c => c.status === 'paused').length;
         const totalLessons = courses.reduce((sum, c) => sum + c.total_lessons, 0);
         const finishedLessons = courses.reduce((sum, c) => sum + c.finished_lessons, 0);
-        return { total, completed, inProgress, totalLessons, finishedLessons };
+        return { total, completed, inProgress, notStarted, paused, totalLessons, finishedLessons };
     }, [courses]);
+
+    // 筛选后的课程列表
+    const filteredCourses = useMemo(() => {
+        if (statusFilter === 'all') return courses;
+        return courses.filter(c => {
+            // 兼容旧数据：如果没有status字段，根据进度判断
+            const status = c.status || (
+                c.finished_lessons === 0 ? 'not_started' :
+                c.finished_lessons >= c.total_lessons ? 'completed' : 'in_progress'
+            );
+            return status === statusFilter;
+        });
+    }, [courses, statusFilter]);
+
+    // 获取课程日志
+    const fetchCourseLogs = useCallback(async (courseId) => {
+        try {
+            const logs = await coursesApi.getLogs(courseId, 10);  // 最近10条
+            setCourseLogs(prev => ({ ...prev, [courseId]: logs }));
+        } catch (err) {
+            console.error('获取日志失败:', err);
+        }
+    }, []);
+
+    // 切换展开课程日志
+    const toggleCourseLogs = useCallback((courseId) => {
+        if (expandedCourseId === courseId) {
+            setExpandedCourseId(null);
+        } else {
+            setExpandedCourseId(courseId);
+            // 如果还没加载过该课程的日志，则加载
+            if (!courseLogs[courseId]) {
+                fetchCourseLogs(courseId);
+            }
+        }
+    }, [expandedCourseId, courseLogs, fetchCourseLogs]);
 
     // 选择学科
     const handleSelectSubject = useCallback((subjectItem) => {
@@ -90,9 +137,9 @@ export default function useCourseData() {
             ));
         } catch (err) {
             console.error('更新失败:', err);
-            alert('操作失败: ' + err.message);
+            toast.error('操作失败: ' + err.message);
         }
-    }, []);
+    }, [toast]);
 
     // 减少课时
     const handleDecrement = useCallback(async (id) => {
@@ -106,9 +153,9 @@ export default function useCourseData() {
             ));
         } catch (err) {
             console.error('更新失败:', err);
-            alert('操作失败: ' + err.message);
+            toast.error('操作失败: ' + err.message);
         }
-    }, [courses]);
+    }, [courses, toast]);
 
     // 删除课程
     const handleDelete = useCallback(async (id) => {
@@ -117,11 +164,12 @@ export default function useCourseData() {
         try {
             await coursesApi.delete(id);
             setCourses(prev => prev.filter(c => c.id !== id));
+            toast.success('删除成功');
         } catch (err) {
             console.error('删除失败:', err);
-            alert('删除失败: ' + err.message);
+            toast.error('删除失败: ' + err.message);
         }
-    }, []);
+    }, [toast]);
 
     // 添加自定义项到表单
     const addCustomItem = useCallback(() => {
@@ -148,15 +196,20 @@ export default function useCourseData() {
 
     // 创建课程
     const handleCreateCourse = useCallback(async () => {
-        if (!newCourse.title || !newCourse.total_lessons) {
-            return alert('请填写课程名称和总课时');
+        if (!newCourse.title) {
+            return toast.warning('请填写课程名称');
+        }
+        
+        const totalLessons = parseInt(newCourse.total_lessons);
+        if (!totalLessons || totalLessons < 1) {
+            return toast.warning('总课时必须至少为 1');
         }
 
         try {
             const courseData = {
                 title: newCourse.title,
                 subject: selectedSubjectId || null,
-                total_lessons: parseInt(newCourse.total_lessons),
+                total_lessons: totalLessons,
                 start_date: newCourse.start_date || null,
                 end_date: newCourse.end_date || null,
                 course_url: newCourse.course_url || null,
@@ -183,12 +236,12 @@ export default function useCourseData() {
             });
             setSelectedSubjectId(null);
 
-            alert('课程创建成功');
+            toast.success('课程创建成功');
         } catch (err) {
             console.error('创建失败:', err);
-            alert('创建失败: ' + err.message);
+            toast.error('创建失败: ' + err.message);
         }
-    }, [newCourse, selectedSubjectId]);
+    }, [newCourse, selectedSubjectId, toast]);
 
     // 编辑课程
     const handleEdit = useCallback((course) => {
@@ -223,11 +276,12 @@ export default function useCourseData() {
 
             setShowEditModal(false);
             setEditingCourse(null);
+            toast.success('更新成功');
         } catch (err) {
             console.error('更新失败:', err);
-            alert('更新失败: ' + err.message);
+            toast.error('更新失败: ' + err.message);
         }
-    }, []);
+    }, [toast]);
 
     // 设置进度
     const handleSetProgress = useCallback(async (id, newProgress) => {
@@ -238,13 +292,14 @@ export default function useCourseData() {
             ));
         } catch (err) {
             console.error('更新失败:', err);
-            alert('操作失败: ' + err.message);
+            toast.error('操作失败: ' + err.message);
         }
-    }, []);
+    }, [toast]);
 
     return {
         // 状态
         courses,
+        filteredCourses,
         subjects,
         loading,
         editingCourse,
@@ -255,11 +310,15 @@ export default function useCourseData() {
         subjectDropdownRef,
         subjectSuggestions,
         stats,
+        statusFilter,
+        courseLogs,
+        expandedCourseId,
 
         // 设置函数
         setNewCourse,
         setCustomItemInput,
         setShowSubjectDropdown,
+        setStatusFilter,
 
         // 处理函数
         handleSelectSubject,
@@ -273,5 +332,7 @@ export default function useCourseData() {
         handleSaveEdit,
         handleSetProgress,
         closeEditModal,
+        toggleCourseLogs,
+        fetchCourseLogs,
     };
 }

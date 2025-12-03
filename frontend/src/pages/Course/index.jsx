@@ -4,7 +4,7 @@ import { AnimatePresence } from 'framer-motion';
 import {
     ArrowLeft, Plus, BookOpen, Trash2, ChevronUp, ChevronDown,
     Edit3, Check, X, GraduationCap, Target, ExternalLink,
-    FileText, Clock, History, Folder
+    FileText, Clock, History, Folder, Play, Pause, CircleDot
 } from 'lucide-react';
 
 import { getColorStyles } from './constants';
@@ -16,6 +16,7 @@ export default function Course() {
     const {
         // 状态
         courses,
+        filteredCourses,
         loading,
         editingCourse,
         showEditModal,
@@ -25,11 +26,15 @@ export default function Course() {
         subjectDropdownRef,
         subjectSuggestions,
         stats,
+        statusFilter,
+        courseLogs,
+        expandedCourseId,
 
         // 设置函数
         setNewCourse,
         setCustomItemInput,
         setShowSubjectDropdown,
+        setStatusFilter,
 
         // 处理函数
         handleSelectSubject,
@@ -43,7 +48,17 @@ export default function Course() {
         handleSaveEdit,
         handleSetProgress,
         closeEditModal,
+        toggleCourseLogs,
     } = useCourseData();
+
+    // 状态筛选选项
+    const statusTabs = [
+        { key: 'all', label: '全部', icon: BookOpen, count: stats.total },
+        { key: 'in_progress', label: '进行中', icon: Play, count: stats.inProgress },
+        { key: 'completed', label: '已完成', icon: Check, count: stats.completed },
+        { key: 'not_started', label: '未开始', icon: CircleDot, count: stats.notStarted },
+        { key: 'paused', label: '已暂停', icon: Pause, count: stats.paused },
+    ];
 
     if (loading) {
         return (
@@ -162,9 +177,14 @@ export default function Course() {
                             <input
                                 type="number"
                                 className="w-full bg-slate-800/50 border border-slate-700/50 rounded-lg p-3 text-sm text-white outline-none focus:bg-slate-800 focus:border-indigo-500 transition-all"
-                                placeholder="总课时 *"
+                                placeholder="总课时 * (至少1)"
                                 value={newCourse.total_lessons}
-                                onChange={e => setNewCourse({ ...newCourse, total_lessons: e.target.value })}
+                                onChange={e => {
+                                    const val = parseInt(e.target.value) || '';
+                                    // 允许为空以便用户清除输入，但若有值则至少为1
+                                    setNewCourse({ ...newCourse, total_lessons: val });
+                                }}
+                                min={1}
                             />
 
                             {/* 课程链接 */}
@@ -354,21 +374,55 @@ export default function Course() {
 
                 {/* 课程列表 - 右侧，占2/6 */}
                 <div className="lg:col-span-2 flex flex-col">
-                    <div className="flex items-center gap-2 mb-3 shrink-0">
-                        <div className="h-5 w-1 rounded-full bg-accent"></div>
-                        <h3 className="font-bold text-slate-700">我的课程 ({courses.length})</h3>
+                    <div className="flex items-center justify-between mb-3 shrink-0">
+                        <div className="flex items-center gap-2">
+                            <div className="h-5 w-1 rounded-full bg-accent"></div>
+                            <h3 className="font-bold text-slate-700">我的课程</h3>
+                        </div>
                     </div>
 
                     <div className="bg-white/60 backdrop-blur-md rounded-2xl border border-white/60 shadow-sm flex-1 min-h-[500px] flex flex-col overflow-hidden">
-                        {courses.length === 0 ? (
+                        {/* 状态筛选标签 */}
+                        <div className="flex items-center gap-1 p-3 border-b border-slate-200/50 overflow-x-auto shrink-0">
+                            {statusTabs.map(tab => {
+                                const Icon = tab.icon;
+                                const isActive = statusFilter === tab.key;
+                                return (
+                                    <button
+                                        key={tab.key}
+                                        onClick={() => setStatusFilter(tab.key)}
+                                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all
+                                            ${isActive 
+                                                ? 'bg-accent text-white shadow-sm' 
+                                                : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
+                                            }`}
+                                    >
+                                        <Icon size={12} />
+                                        <span>{tab.label}</span>
+                                        {tab.count > 0 && (
+                                            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold
+                                                ${isActive ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-600'}`}>
+                                                {tab.count}
+                                            </span>
+                                        )}
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        {filteredCourses.length === 0 ? (
                             <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
                                 <GraduationCap size={40} className="text-slate-300 mb-3" />
-                                <h3 className="text-base font-bold text-slate-500 mb-1">还没有课程</h3>
-                                <p className="text-sm text-slate-400">在左侧添加课程</p>
+                                <h3 className="text-base font-bold text-slate-500 mb-1">
+                                    {statusFilter === 'all' ? '还没有课程' : '没有符合条件的课程'}
+                                </h3>
+                                <p className="text-sm text-slate-400">
+                                    {statusFilter === 'all' ? '在左侧添加课程' : '切换筛选条件查看其他课程'}
+                                </p>
                             </div>
                         ) : (
                             <div className="flex-1 overflow-y-auto custom-scrollbar">
-                                {courses.map((course, index) => {
+                                {filteredCourses.map((course, index) => {
                                     const progress = course.total_lessons > 0
                                         ? Math.round((course.finished_lessons / course.total_lessons) * 100)
                                         : 0;
@@ -380,19 +434,28 @@ export default function Course() {
                                         <div
                                             key={course.id}
                                             className={`p-4 group hover:brightness-95 transition-all duration-200 ${colorStyle.bg}
-                                            ${index !== courses.length - 1 ? 'border-b border-slate-200/50' : ''}`}
+                                            ${index !== filteredCourses.length - 1 ? 'border-b border-slate-200/50' : ''}`}
                                         >
-                                            {/* 第一行：课程名称 + 完成标记 + 操作按钮 */}
+                                            {/* 第一行：课程名称 + 状态标记 + 操作按钮 */}
                                             <div className="flex items-center justify-between mb-2">
                                                 <div className="flex items-center gap-2 flex-1 min-w-0">
                                                     <h4 className={`font-bold text-base truncate ${isCompleted ? 'text-emerald-700' : colorStyle.text}`}>
                                                         {course.title}
                                                     </h4>
-                                                    {isCompleted && (
+                                                    {/* 状态标签 */}
+                                                    {isCompleted ? (
                                                         <span className="bg-emerald-100 text-emerald-600 text-[10px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-0.5 shrink-0">
                                                             <Check size={10} /> 已完成
                                                         </span>
-                                                    )}
+                                                    ) : course.status === 'paused' ? (
+                                                        <span className="bg-amber-100 text-amber-600 text-[10px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-0.5 shrink-0">
+                                                            <Pause size={10} /> 已暂停
+                                                        </span>
+                                                    ) : course.finished_lessons > 0 ? (
+                                                        <span className="bg-indigo-100 text-indigo-600 text-[10px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-0.5 shrink-0">
+                                                            <Play size={10} /> 进行中
+                                                        </span>
+                                                    ) : null}
                                                 </div>
                                                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                     <button
@@ -504,12 +567,46 @@ export default function Course() {
                                                     );
                                                 })}
 
-                                                {/* 如果没有自定义项，显示空白占位行保持布局一致 */}
-                                                {customItems.length === 0 && (
-                                                    <div className="h-6"></div>
-                                                )}
-                                                {customItems.length === 1 && (
-                                                    <div className="h-6"></div>
+                                                {/* 查看历史按钮 */}
+                                                <button
+                                                    onClick={() => toggleCourseLogs(course.id)}
+                                                    className="flex items-center gap-1 text-xs text-slate-400 hover:text-indigo-500 transition-colors mt-1"
+                                                >
+                                                    <History size={12} />
+                                                    <span>{expandedCourseId === course.id ? '收起历史' : '查看进度历史'}</span>
+                                                </button>
+
+                                                {/* 进度历史日志 */}
+                                                {expandedCourseId === course.id && (
+                                                    <div className="mt-2 pt-2 border-t border-slate-200/50">
+                                                        {!courseLogs[course.id] ? (
+                                                            <div className="text-xs text-slate-400 py-2">加载中...</div>
+                                                        ) : courseLogs[course.id].length === 0 ? (
+                                                            <div className="text-xs text-slate-400 py-2">暂无进度记录</div>
+                                                        ) : (
+                                                            <div className="space-y-1.5 max-h-32 overflow-y-auto custom-scrollbar">
+                                                                {courseLogs[course.id].map((log, idx) => (
+                                                                    <div key={log.id || idx} className="flex items-center gap-2 text-xs">
+                                                                        <span className="text-slate-400 w-20 shrink-0">
+                                                                            {new Date(log.log_date).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })}
+                                                                        </span>
+                                                                        <span className="text-slate-500">
+                                                                            {log.prev_lessons} → {log.new_lessons}
+                                                                        </span>
+                                                                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium
+                                                                            ${log.new_lessons > log.prev_lessons ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}>
+                                                                            {log.new_lessons > log.prev_lessons ? `+${log.new_lessons - log.prev_lessons}` : log.new_lessons - log.prev_lessons}
+                                                                        </span>
+                                                                        {log.note && (
+                                                                            <span className="text-slate-400 truncate flex-1" title={log.note}>
+                                                                                {log.note}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 )}
                                             </div>
                                         </div>

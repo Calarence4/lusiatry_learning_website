@@ -1,12 +1,13 @@
 import React, { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Layout from './components/Layout';
+import { ToastProvider } from './components/Toast';
 
 // 懒加载页面组件 - 性能优化
 const Home = lazy(() => import('./pages/Home'));
 const CheckIn = lazy(() => import('./pages/CheckIn'));
 const Questions = lazy(() => import('./pages/Questions'));
-const KnowledgeBase = lazy(() => import('./pages/KnowledgeBase'));
+const KnowledgeBase = lazy(() => import('./pages/KnowledgeBase/index'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const News = lazy(() => import('./pages/News'));
 const Course = lazy(() => import('./pages/Course'));
@@ -23,10 +24,11 @@ const PageLoader = () => (
 
 export default function App() {
   return (
-    <Router>
-      <Layout>
-        <Suspense fallback={<PageLoader />}>
-          <Routes>
+    <ToastProvider>
+      <Router>
+        <Layout>
+          <Suspense fallback={<PageLoader />}>
+            <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/checkin" element={<CheckIn />} />
             <Route path="/questions" element={<Questions />} />
@@ -34,9 +36,10 @@ export default function App() {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/news" element={<News />} />
             <Route path="/course" element={<Course />} />
-          </Routes>
-        </Suspense>
-      </Layout>
-    </Router>
+            </Routes>
+          </Suspense>
+        </Layout>
+      </Router>
+    </ToastProvider>
   );
 }

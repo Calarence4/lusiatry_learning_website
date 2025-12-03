@@ -6,9 +6,10 @@ import {
     Eye, EyeOff, Inbox, Archive
 } from 'lucide-react';
 import { fileTreeApi } from '../api';
+import { useToast } from '../components/Toast';
 
 // 文件树节点组件
-const FileTreeItem = memo(({ node, level, activeId, onSelect, onRefresh }) => {
+const FileTreeItem = memo(({ node, level, activeId, onSelect, onRefresh, onToast }) => {
     const [isOpen, setIsOpen] = useState(level < 1 || node.is_system);
     const [showMenu, setShowMenu] = useState(false);
     const [isRenaming, setIsRenaming] = useState(false);
@@ -37,29 +38,30 @@ const FileTreeItem = memo(({ node, level, activeId, onSelect, onRefresh }) => {
             onRefresh();
             setIsRenaming(false);
         } catch (err) {
-            alert('重命名失败: ' + err.message);
+            onToast?.('error', '重命名失败: ' + err.message);
         }
-    }, [newName, node.id, node.title, onRefresh]);
+    }, [newName, node.id, node.title, onRefresh, onToast]);
 
     const handleDelete = useCallback(async () => {
-        if (node.is_system) return alert('系统文件夹不可删除');
+        if (node.is_system) return onToast?.('warning', '系统文件夹不可删除');
         if (!window.confirm(`确定删除 "${node.title}" 吗？${isFolder ? '（包含所有子文件）' : ''}`)) return;
         try {
             await fileTreeApi.delete(node.id);
             onRefresh();
+            onToast?.('success', '删除成功');
         } catch (err) {
-            alert('删除失败: ' + err.message);
+            onToast?.('error', '删除失败: ' + err.message);
         }
-    }, [node.is_system, node.title, node.id, isFolder, onRefresh]);
+    }, [node.is_system, node.title, node.id, isFolder, onRefresh, onToast]);
 
     const handleToggleSubject = useCallback(async () => {
         try {
             await fileTreeApi.update(node.id, { is_subject: !node.is_subject });
             onRefresh();
         } catch (err) {
-            alert('操作失败: ' + err.message);
+            onToast?.('error', '操作失败: ' + err.message);
         }
-    }, [node.id, node.is_subject, onRefresh]);
+    }, [node.id, node.is_subject, onRefresh, onToast]);
 
     // 获取文件夹图标
     const getFolderIcon = () => {
@@ -76,18 +78,20 @@ const FileTreeItem = memo(({ node, level, activeId, onSelect, onRefresh }) => {
     return (
         <div className="select-none">
             <div
-                className={`group flex items-center gap-1 py-1.5 px-2 rounded-lg cursor-pointer transition-colors relative
+                className={`group flex items-center gap-2 py-1.5 px-2 rounded-lg cursor-pointer transition-colors relative
           ${isActive ? 'bg-indigo-50/80 text-indigo-600 font-medium' : 'text-slate-600 hover:bg-white/50'}`}
                 style={{ paddingLeft: `${level * 12 + 8}px` }}
                 onClick={handleToggle}
             >
-                <span className="text-slate-400 w-4 flex-shrink-0">
+                <span className="text-slate-400 w-4 h-4 flex items-center justify-center flex-shrink-0">
                     {isFolder && (isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />)}
                 </span>
 
-                {isFolder ? getFolderIcon() : (
-                    <FileText size={16} className="text-slate-400 flex-shrink-0" />
-                )}
+                <span className="flex-shrink-0">
+                    {isFolder ? getFolderIcon() : (
+                        <FileText size={16} className="text-slate-400" />
+                    )}
+                </span>
 
                 {isRenaming ? (
                     <input
@@ -161,6 +165,7 @@ const FileTreeItem = memo(({ node, level, activeId, onSelect, onRefresh }) => {
                             activeId={activeId}
                             onSelect={onSelect}
                             onRefresh={onRefresh}
+                            onToast={onToast}
                         />
                     ))}
                 </div>
@@ -197,6 +202,7 @@ const MarkdownPreview = memo(({ content }) => {
 
 // 主组件
 export default function KnowledgeBase() {
+    const toast = useToast();
     const [searchParams, setSearchParams] = useSearchParams();
     const [activeFile, setActiveFile] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -274,17 +280,17 @@ export default function KnowledgeBase() {
             setSaving(true);
             await fileTreeApi.update(activeFile.id, { content: editContent });
             setActiveFile(prev => ({ ...prev, content: editContent }));
-            alert('保存成功');
+            toast.success('保存成功');
         } catch (err) {
-            alert('保存失败: ' + err.message);
+            toast.error('保存失败: ' + err.message);
         } finally {
             setSaving(false);
         }
-    }, [activeFile, editContent]);
+    }, [activeFile, editContent, toast]);
 
     // 保存为笔记
     const handleSaveAsNote = useCallback(async () => {
-        if (!editContent.trim()) return alert('请输入内容');
+        if (!editContent.trim()) return toast.warning('请输入内容');
 
         const title = prompt('请输入笔记标题：');
         if (!title?.trim()) return;
@@ -301,18 +307,18 @@ export default function KnowledgeBase() {
             setActiveFile(null);
             setSearchParams({});
             fetchFileTree();
-            alert('笔记已保存');
+            toast.success('笔记已保存');
         } catch (err) {
-            alert('保存失败: ' + err.message);
+            toast.error('保存失败: ' + err.message);
         } finally {
             setSaving(false);
         }
-    }, [editContent, fetchFileTree, setSearchParams]);
+    }, [editContent, fetchFileTree, setSearchParams, toast]);
 
     // 保存为草稿
     const handleSaveAsDraft = useCallback(async () => {
-        if (!editContent.trim()) return alert('请输入内容');
-        if (!draftBoxId) return alert('草稿箱未创建');
+        if (!editContent.trim()) return toast.warning('请输入内容');
+        if (!draftBoxId) return toast.error('草稿箱未创建');
 
         const title = `草稿 ${new Date().toLocaleString()}`;
 
@@ -326,17 +332,17 @@ export default function KnowledgeBase() {
             });
             setEditContent('');
             fetchFileTree();
-            alert('已保存到草稿箱');
+            toast.success('已保存到草稿箱');
         } catch (err) {
-            alert('保存失败: ' + err.message);
+            toast.error('保存失败: ' + err.message);
         } finally {
             setSaving(false);
         }
-    }, [editContent, draftBoxId, fetchFileTree]);
+    }, [editContent, draftBoxId, fetchFileTree, toast]);
 
     // 创建文件夹
     const handleCreateFolder = useCallback(async () => {
-        if (!createFolderTitle.trim()) return alert('请输入文件夹名称');
+        if (!createFolderTitle.trim()) return toast.warning('请输入文件夹名称');
         try {
             await fileTreeApi.create({
                 title: createFolderTitle.trim(),
@@ -348,10 +354,11 @@ export default function KnowledgeBase() {
             setCreateFolderTitle('');
             setCreateFolderIsSubject(false);
             fetchFileTree();
+            toast.success('文件夹创建成功');
         } catch (err) {
-            alert('创建失败: ' + err.message);
+            toast.error('创建失败: ' + err.message);
         }
-    }, [createFolderTitle, createFolderParentId, createFolderIsSubject, fetchFileTree]);
+    }, [createFolderTitle, createFolderParentId, createFolderIsSubject, fetchFileTree, toast]);
 
     // 搜索过滤
     const displayTree = useMemo(() => {
@@ -464,6 +471,7 @@ export default function KnowledgeBase() {
                                         activeId={activeFile?.id}
                                         onSelect={handleSelectFile}
                                         onRefresh={fetchFileTree}
+                                        onToast={(type, msg) => toast[type]?.(msg)}
                                     />
                                 ))
                             )}

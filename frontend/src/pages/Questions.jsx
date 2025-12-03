@@ -10,8 +10,10 @@ import { Link } from 'react-router-dom';
 // 【新增】引入 API
 // ============================================
 import { problemsApi, fileTreeApi } from '../api';
+import { useToast } from '../components/Toast';
 
 export default function Questions() {
+  const toast = useToast();
   // ============================================
   // 【修改】questions 初始为空数组
   // ============================================
@@ -105,7 +107,7 @@ export default function Questions() {
       ));
     } catch (err) {
       console.error('切换状态失败:', err);
-      alert('操作失败: ' + err.message);
+      toast.error('操作失败: ' + err.message);
     }
   };
 
@@ -163,9 +165,10 @@ export default function Questions() {
       ));
       
       closeAnswerModal();
+      toast.success('保存成功');
     } catch (err) {
       console.error('保存答案失败:', err);
-      alert('保存失败: ' + err.message);
+      toast.error('保存失败: ' + err.message);
     } finally {
       setSavingAnswer(false);
     }
@@ -212,9 +215,10 @@ export default function Questions() {
       ));
       
       closeAnswerTextModal();
+      toast.success('保存成功');
     } catch (err) {
       console.error('保存答案失败:', err);
-      alert('保存失败: ' + err.message);
+      toast.error('保存失败: ' + err.message);
     } finally {
       setSavingAnswerText(false);
     }
@@ -509,8 +513,11 @@ export default function Questions() {
                       </div>
                     ))}
                     {notes.length === 0 && (
-                      <div className="px-3 py-4 text-sm text-slate-400 text-center">
-                        暂无笔记
+                      <div className="px-3 py-4 text-sm text-center">
+                        <p className="text-slate-400">暂无可关联的笔记</p>
+                        <Link to="/knowledge" className="text-indigo-500 hover:text-indigo-600 text-xs mt-1 inline-block">
+                          前往知识库创建笔记 →
+                        </Link>
                       </div>
                     )}
                   </div>

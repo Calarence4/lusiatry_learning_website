@@ -3,9 +3,11 @@ import { motion } from 'framer-motion';
 import { ChevronUp, PenLine, Save, HelpCircle, FileText, Folder, ChevronDown, BookOpen, Clock, ChevronRight, ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { draftsApi, problemsApi, subjectsApi, studyTimeApi, fileTreeApi } from '../api';
+import { useToast } from './Toast';
 
-export default function LearningRecorder() {
+export default function LearningRecorder({ onDataChange }) {
     const navigate = useNavigate();
+    const toast = useToast();
     const [subjects, setSubjects] = useState([]);
     const [pendingDraftsCount, setPendingDraftsCount] = useState(0);
     const [unresolvedCount, setUnresolvedCount] = useState(0);
@@ -47,23 +49,38 @@ export default function LearningRecorder() {
                 const unsolvedProblems = (problemsData || []).filter(p => !p.is_solved && !p.answer);
                 setUnresolvedCount(unsolvedProblems.length);
                 
-                // 获取草稿箱中的文件数量
+                // 获取草稿箱中的文件数量（递归计算所有文件）
                 const draftBox = await fileTreeApi.ensureDraftBox();
                 const tree = await fileTreeApi.getTree();
+                
+                // 递归计算节点下所有文件数量
+                const countAllFiles = (nodes) => {
+                    let count = 0;
+                    for (const node of nodes) {
+                        if (node.type === 'file') {
+                            count++;
+                        }
+                        if (node.children && node.children.length > 0) {
+                            count += countAllFiles(node.children);
+                        }
+                    }
+                    return count;
+                };
+                
                 // 找到草稿箱并计算其子文件数
-                const findDraftBoxChildren = (nodes) => {
+                const findDraftBoxAndCount = (nodes) => {
                     for (const node of nodes) {
                         if (node.id === draftBox.id) {
-                            return node.children?.length || 0;
+                            return countAllFiles(node.children || []);
                         }
                         if (node.children) {
-                            const count = findDraftBoxChildren(node.children);
+                            const count = findDraftBoxAndCount(node.children);
                             if (count >= 0) return count;
                         }
                     }
                     return 0;
                 };
-                setPendingDraftsCount(findDraftBoxChildren(tree || []));
+                setPendingDraftsCount(findDraftBoxAndCount(tree || []));
             } catch (err) {
                 console.error('加载数据失败:', err);
             } finally {
@@ -175,11 +192,12 @@ export default function LearningRecorder() {
                     duration: parseInt(duration),
                     note: content || null
                 });
-                alert("学习日志已记录");
+                toast.success("学习日志已记录");
+                onDataChange?.();
             } else {
                 // 提疑问模式：录入问题
                 if (!content) {
-                    alert("请填写问题内容");
+                    toast.warning("请填写问题内容");
                     return;
                 }
                 await problemsApi.create({
@@ -187,7 +205,8 @@ export default function LearningRecorder() {
                     subject: subjectId
                 });
                 setUnresolvedCount(prev => prev + 1);
-                alert("已录入问题集，待解决");
+                toast.success("已录入问题集，待解决");
+                onDataChange?.();
             }
 
             setContent('');
@@ -200,7 +219,7 @@ export default function LearningRecorder() {
 
         } catch (err) {
             console.error('保存失败:', err);
-            alert('保存失败: ' + err.message);
+            toast.error('保存失败: ' + err.message);
         } finally {
             setSaving(false);
         }

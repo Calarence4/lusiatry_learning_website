@@ -1,13 +1,27 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { X, ChevronDown, Folder, Palette } from 'lucide-react';
+import { X, ChevronDown, Folder, Palette, Play, Pause, Check, CircleDot } from 'lucide-react';
 import { PRESET_COLORS, getColorStyles } from './constants';
+import { useToast } from '../../components/Toast';
+
+// 状态选项
+const STATUS_OPTIONS = [
+    { value: 'not_started', label: '未开始', icon: CircleDot, color: 'text-slate-500' },
+    { value: 'in_progress', label: '进行中', icon: Play, color: 'text-indigo-600' },
+    { value: 'completed', label: '已完成', icon: Check, color: 'text-emerald-600' },
+    { value: 'paused', label: '已暂停', icon: Pause, color: 'text-amber-600' },
+];
 
 // 编辑课程模态框
 const EditCourseModal = ({ course, subjects, onClose, onSave }) => {
+    const toast = useToast();
+    // 找到当前课程的学科信息
+    const currentSubject = subjects.find(s => s.id === course.subject);
+    
     const [formData, setFormData] = useState({
         title: course.title || '',
-        subject: course.subject || '',
+        subjectId: course.subject || null,  // 存储学科 ID
+        subjectDisplay: currentSubject ? (currentSubject.path || currentSubject.title) : '',  // 存储显示名称
         total_lessons: course.total_lessons || 0,
         finished_lessons: course.finished_lessons || 0,
         course_url: course.course_url || '',
@@ -15,11 +29,14 @@ const EditCourseModal = ({ course, subjects, onClose, onSave }) => {
         start_date: course.start_date ? course.start_date.split('T')[0] : '',
         end_date: course.end_date ? course.end_date.split('T')[0] : '',
         color: course.color || null,
+        status: course.status || 'not_started',  // 课程状态
     });
     const [showColorPicker, setShowColorPicker] = useState(false);
     const [showSubjectDropdown, setShowSubjectDropdown] = useState(false);
+    const [showStatusDropdown, setShowStatusDropdown] = useState(false);
     const colorPickerRef = useRef(null);
     const subjectDropdownRef = useRef(null);
+    const statusDropdownRef = useRef(null);
 
     // 点击外部关闭
     useEffect(() => {
@@ -30,6 +47,9 @@ const EditCourseModal = ({ course, subjects, onClose, onSave }) => {
             if (subjectDropdownRef.current && !subjectDropdownRef.current.contains(event.target)) {
                 setShowSubjectDropdown(false);
             }
+            if (statusDropdownRef.current && !statusDropdownRef.current.contains(event.target)) {
+                setShowStatusDropdown(false);
+            }
         };
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
@@ -37,10 +57,14 @@ const EditCourseModal = ({ course, subjects, onClose, onSave }) => {
 
     const handleSubmit = () => {
         if (!formData.title) {
-            alert('请填写课程名称');
+            toast.warning('请填写课程名称');
             return;
         }
-        onSave(course.id, formData);
+        // 传递 subjectId 而不是 subject 字符串
+        onSave(course.id, {
+            ...formData,
+            subject: formData.subjectId,  // 使用学科 ID
+        });
     };
 
     const currentColorStyle = getColorStyles(formData.color);
@@ -92,8 +116,8 @@ const EditCourseModal = ({ course, subjects, onClose, onSave }) => {
                             onClick={() => setShowSubjectDropdown(!showSubjectDropdown)}
                             className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm cursor-pointer hover:border-indigo-300 transition-colors flex items-center justify-between"
                         >
-                            <span className={formData.subject ? 'text-slate-800' : 'text-slate-400'}>
-                                {formData.subject || '选择学科'}
+                            <span className={formData.subjectDisplay ? 'text-slate-800' : 'text-slate-400'}>
+                                {formData.subjectDisplay || '选择学科'}
                             </span>
                             <ChevronDown size={14} className={`text-slate-400 transition-transform ${showSubjectDropdown ? 'rotate-180' : ''}`} />
                         </div>
@@ -102,7 +126,7 @@ const EditCourseModal = ({ course, subjects, onClose, onSave }) => {
                                 <div className="max-h-48 overflow-y-auto">
                                     <div
                                         onClick={() => {
-                                            setFormData({ ...formData, subject: '' });
+                                            setFormData({ ...formData, subjectId: null, subjectDisplay: '' });
                                             setShowSubjectDropdown(false);
                                         }}
                                         className="px-3 py-2 text-sm text-slate-400 hover:bg-slate-50 cursor-pointer"
@@ -113,10 +137,14 @@ const EditCourseModal = ({ course, subjects, onClose, onSave }) => {
                                         <div
                                             key={item.id}
                                             onClick={() => {
-                                                setFormData({ ...formData, subject: item.path || item.title });
+                                                setFormData({ 
+                                                    ...formData, 
+                                                    subjectId: item.id,  // 存储 ID
+                                                    subjectDisplay: item.path || item.title  // 存储显示名称
+                                                });
                                                 setShowSubjectDropdown(false);
                                             }}
-                                            className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-indigo-50 cursor-pointer"
+                                            className={`flex items-center gap-2 px-3 py-2 text-sm hover:bg-indigo-50 cursor-pointer ${formData.subjectId === item.id ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700'}`}
                                         >
                                             <Folder size={14} className="text-slate-400" />
                                             <span>{item.path || item.title}</span>
@@ -134,7 +162,12 @@ const EditCourseModal = ({ course, subjects, onClose, onSave }) => {
                             <input
                                 type="number"
                                 value={formData.finished_lessons}
-                                onChange={(e) => setFormData({ ...formData, finished_lessons: parseInt(e.target.value) || 0 })}
+                                onChange={(e) => {
+                                    const val = parseInt(e.target.value) || 0;
+                                    // 确保值在 0 到总课时之间
+                                    const clampedVal = Math.max(0, Math.min(val, formData.total_lessons));
+                                    setFormData({ ...formData, finished_lessons: clampedVal });
+                                }}
                                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500 transition-colors"
                                 min={0}
                                 max={formData.total_lessons}
@@ -145,11 +178,60 @@ const EditCourseModal = ({ course, subjects, onClose, onSave }) => {
                             <input
                                 type="number"
                                 value={formData.total_lessons}
-                                onChange={(e) => setFormData({ ...formData, total_lessons: parseInt(e.target.value) || 0 })}
+                                onChange={(e) => {
+                                    const val = parseInt(e.target.value) || 0;
+                                    // 总课时至少为 1
+                                    const clampedVal = Math.max(1, val);
+                                    setFormData({ ...formData, total_lessons: clampedVal });
+                                }}
                                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500 transition-colors"
-                                min={0}
+                                min={1}
                             />
                         </div>
+                    </div>
+
+                    {/* 课程状态 */}
+                    <div className="relative" ref={statusDropdownRef}>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">课程状态</label>
+                        <div
+                            onClick={() => setShowStatusDropdown(!showStatusDropdown)}
+                            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm cursor-pointer hover:border-indigo-300 transition-colors flex items-center justify-between"
+                        >
+                            {(() => {
+                                const currentStatus = STATUS_OPTIONS.find(s => s.value === formData.status) || STATUS_OPTIONS[0];
+                                const Icon = currentStatus.icon;
+                                return (
+                                    <div className="flex items-center gap-2">
+                                        <Icon size={14} className={currentStatus.color} />
+                                        <span className={currentStatus.color}>{currentStatus.label}</span>
+                                    </div>
+                                );
+                            })()}
+                            <ChevronDown size={14} className={`text-slate-400 transition-transform ${showStatusDropdown ? 'rotate-180' : ''}`} />
+                        </div>
+                        {showStatusDropdown && (
+                            <div className="absolute left-0 right-0 top-full mt-1 bg-white shadow-xl border border-slate-200 rounded-xl overflow-hidden z-50">
+                                <div className="p-1">
+                                    {STATUS_OPTIONS.map((option) => {
+                                        const Icon = option.icon;
+                                        return (
+                                            <div
+                                                key={option.value}
+                                                onClick={() => {
+                                                    setFormData({ ...formData, status: option.value });
+                                                    setShowStatusDropdown(false);
+                                                }}
+                                                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors
+                                                    ${formData.status === option.value ? 'bg-indigo-50' : 'hover:bg-slate-50'}`}
+                                            >
+                                                <Icon size={14} className={option.color} />
+                                                <span className={option.color}>{option.label}</span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* 卡片颜色 */}

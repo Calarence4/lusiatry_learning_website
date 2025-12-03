@@ -77,9 +77,12 @@ export const fileTreeApi = {
 export const coursesApi = {
     getAll: (params) => api.get('/courses', { params }).then(handleResponse),
     getById: (id) => api.get(`/courses/${id}`).then(handleResponse),
+    getStats: () => api.get('/courses/stats').then(handleResponse),
+    getLogs: (id, limit) => api.get(`/courses/${id}/logs`, { params: { limit } }).then(handleResponse),
     create: (data) => api.post('/courses', data).then(handleResponse),
     update: (id, data) => api.put(`/courses/${id}`, data).then(handleResponse),
     delete: (id) => api.delete(`/courses/${id}`).then(handleResponse),
-    increment: (id) => api.patch(`/courses/${id}/increment`).then(handleResponse),
-    setProgress: (id, finished_lessons) => api.patch(`/courses/${id}/progress`, { finished_lessons }).then(handleResponse),
+    increment: (id, note) => api.patch(`/courses/${id}/increment`, { note }).then(handleResponse),
+    setProgress: (id, finished_lessons, note) => api.patch(`/courses/${id}/progress`, { finished_lessons, note }).then(handleResponse),
+    addLogNote: (courseId, logId, note) => api.patch(`/courses/${courseId}/logs/${logId}`, { note }).then(handleResponse),
 };

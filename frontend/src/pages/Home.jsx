@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import LearningRecorder from '../components/LearningRecorder';
 import { BookOpen, Globe, HelpCircle, CheckCircle2, Circle, CalendarRange, AlertTriangle, MoreHorizontal, Trophy, Zap, Sparkles } from 'lucide-react';
 import { problemsApi, tasksApi, fileTreeApi, studyTimeApi } from '../api';
+import { useToast } from '../components/Toast';
 
 
 
@@ -76,6 +77,7 @@ const TaskItemInner = ({ task, completed, onToggle, compact = false, isUrgent = 
 };
 
 export default function Home() {
+    const toast = useToast();
     const navigate = useNavigate();
     const today = new Date();
     const [completed, setCompleted] = useState({});
@@ -87,57 +89,77 @@ export default function Home() {
     const [tasksData, setTasksData] = useState([]);
     const [todayFocusTime, setTodayFocusTime] = useState(0);
 
+    // 抽取刷新数据函数，供子组件调用
+    const refreshData = async () => {
+        try {
+            const todayStr = format(today, 'yyyy-MM-dd');
+
+            const [problemsData, todayTasks, focusTimeData, todayNotesData] = await Promise.all([
+                problemsApi.getAll(),
+                tasksApi.getByDate(todayStr),
+                studyTimeApi.getDailyTotal(todayStr),
+                fileTreeApi.getTodayCount()
+            ]);
+
+            // 过滤真正未解决的问题（没有 is_solved 且没有 answer）
+            const unsolvedProblems = (problemsData || []).filter(p => !p.is_solved && !p.answer);
+            setPendingQuestionsCount(unsolvedProblems.length);
+            setRecentQuestions(unsolvedProblems.slice(0, 2));
+            setTasksData(todayTasks || []);
+            setTodayFocusTime(focusTimeData?.total_duration || 0);
+            setTodayNotesCount(todayNotesData?.count || 0);
+            
+            // 初始化已完成任务的状态
+            const completedState = {};
+            (todayTasks || []).forEach(task => {
+                if (task.is_completed) {
+                    completedState[task.id] = true;
+                }
+            });
+            setCompleted(completedState);
+            
+            // 从知识库草稿箱获取待整理笔记数（递归计算所有文件）
+            const draftBox = await fileTreeApi.ensureDraftBox();
+            const tree = await fileTreeApi.getTree();
+            
+            // 递归计算节点下所有文件数量
+            const countAllFiles = (nodes) => {
+                let count = 0;
+                for (const node of nodes) {
+                    if (node.type === 'file') {
+                        count++;
+                    }
+                    if (node.children && node.children.length > 0) {
+                        count += countAllFiles(node.children);
+                    }
+                }
+                return count;
+            };
+            
+            // 找到草稿箱并计算其下所有文件数
+            const findDraftBoxAndCount = (nodes) => {
+                for (const node of nodes) {
+                    if (node.id === draftBox.id) {
+                        return countAllFiles(node.children || []);
+                    }
+                    if (node.children) {
+                        const count = findDraftBoxAndCount(node.children);
+                        if (count >= 0) return count;
+                    }
+                }
+                return 0;
+            };
+            setPendingNotesCount(findDraftBoxAndCount(tree || []));
+        } catch (err) {
+            console.error('加载数据失败:', err);
+        }
+    };
+
     useEffect(() => {
         async function fetchData() {
-            try {
-                setLoading(true);
-                const todayStr = format(today, 'yyyy-MM-dd');
-
-                const [problemsData, todayTasks, focusTimeData, todayNotesData] = await Promise.all([
-                    problemsApi.getAll(),
-                    tasksApi.getByDate(todayStr),
-                    studyTimeApi.getDailyTotal(todayStr),
-                    fileTreeApi.getTodayCount()
-                ]);
-
-                // 过滤真正未解决的问题（没有 is_solved 且没有 answer）
-                const unsolvedProblems = (problemsData || []).filter(p => !p.is_solved && !p.answer);
-                setPendingQuestionsCount(unsolvedProblems.length);
-                setRecentQuestions(unsolvedProblems.slice(0, 2));
-                setTasksData(todayTasks || []);
-                setTodayFocusTime(focusTimeData?.total_duration || 0);
-                setTodayNotesCount(todayNotesData?.count || 0);
-                
-                // 初始化已完成任务的状态
-                const completedState = {};
-                (todayTasks || []).forEach(task => {
-                    if (task.is_completed) {
-                        completedState[task.id] = true;
-                    }
-                });
-                setCompleted(completedState);
-                
-                // 从知识库草稿箱获取待整理笔记数
-                const draftBox = await fileTreeApi.ensureDraftBox();
-                const tree = await fileTreeApi.getTree();
-                const findDraftBoxChildren = (nodes) => {
-                    for (const node of nodes) {
-                        if (node.id === draftBox.id) {
-                            return node.children?.length || 0;
-                        }
-                        if (node.children) {
-                            const count = findDraftBoxChildren(node.children);
-                            if (count >= 0) return count;
-                        }
-                    }
-                    return 0;
-                };
-                setPendingNotesCount(findDraftBoxChildren(tree || []));
-            } catch (err) {
-                console.error('加载数据失败:', err);
-            } finally {
-                setLoading(false);
-            }
+            setLoading(true);
+            await refreshData();
+            setLoading(false);
         }
         fetchData();
     }, []);
@@ -192,7 +214,7 @@ export default function Home() {
             }
         } catch (err) {
             console.error('标记任务失败:', err);
-            alert('操作失败: ' + err.message);
+            toast.error('操作失败: ' + err.message);
         }
     };
 
@@ -380,7 +402,7 @@ export default function Home() {
                     <div className="lg:col-span-4 flex flex-col h-full space-y-6">
                         <div className="flex-1"></div>
                         {/* LearningRecorder */}
-                        <LearningRecorder />
+                        <LearningRecorder onDataChange={refreshData} />
 
                         {/* 待解决问题 */}
                         <div className="bg-white/60 rounded-2xl p-5 border border-white/60 shadow-sm hover:bg-white/80 transition-all duration-200">

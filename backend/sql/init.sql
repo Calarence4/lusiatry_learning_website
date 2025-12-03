@@ -92,9 +92,25 @@ CREATE TABLE IF NOT EXISTS courses (
     total_lessons INT NOT NULL DEFAULT 1 COMMENT '总课时',
     finished_lessons INT NOT NULL DEFAULT 0 COMMENT '已完成课时',
     process DECIMAL(5,2) DEFAULT 0.00 COMMENT '进度百分比(冗余字段)',
+    status ENUM('not_started', 'in_progress', 'completed', 'paused') DEFAULT 'not_started' COMMENT '课程状态',
+    color VARCHAR(20) DEFAULT NULL COMMENT '课程颜色',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (subject) REFERENCES file_tree(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ========================================
+-- 课程进度日志表 (仿 Bangumi)
+-- ========================================
+CREATE TABLE IF NOT EXISTS course_logs (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    course_id INT NOT NULL COMMENT '关联课程',
+    prev_lessons INT NOT NULL DEFAULT 0 COMMENT '变更前课时',
+    new_lessons INT NOT NULL DEFAULT 0 COMMENT '变更后课时',
+    note TEXT DEFAULT NULL COMMENT '学习笔记/心得',
+    log_date DATE NOT NULL COMMENT '记录日期',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ========================================

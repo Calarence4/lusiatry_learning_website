@@ -2,10 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isBefore, isToday, isFuture, startOfDay, addDays, parseISO, getDay } from 'date-fns';
 import { Plus, CheckCircle2, Circle, Ban, Trash2, Clock, CalendarRange, List, XCircle, Calendar, Timer, ArrowLeft, Tag } from 'lucide-react';
 import { Link } from 'react-router-dom';
-// ============================================
-// 【删除】删除以下这行
-// ============================================
-// import { MOCK_FILE_TREE, MOCK_TASKS_DATA } from '../data/mockDb';
+import { useToast } from '../components/Toast';
 
 // ============================================
 // 【新增】引入 API
@@ -19,6 +16,7 @@ import { tasksApi, subjectsApi } from '../api';
 // const MOCK_LOGS = { ... };
 
 export default function CheckIn() {
+    const toast = useToast();
     const [selectedDate, setSelectedDate] = useState(new Date());
     // ============================================
     // 【修改】tasks 初始为空数组
@@ -29,6 +27,8 @@ export default function CheckIn() {
     const [newTask, setNewTask] = useState({
         title: '', category: '', deadline: '', duration: '', isRecurring: false, recurType: 'duration', durationDays: 7, startDate: '', endDate: ''
     });
+    // 表单验证错误状态
+    const [formErrors, setFormErrors] = useState({});
 
     // ============================================
     // 【新增】新的状态变量
@@ -153,7 +153,7 @@ export default function CheckIn() {
             setCompletedLog(prev => ({ ...prev, [key]: result.is_completed }));
         } catch (err) {
             console.error('切换状态失败:', err);
-            alert('操作失败: ' + err.message);
+            toast.error('操作失败: ' + err.message);
         }
     };
 
@@ -161,8 +161,19 @@ export default function CheckIn() {
     // 【修改】handleAddTask 调用 API
     // ============================================
     const handleAddTask = async () => {
-        if (!newTask.title || !newTask.category) {
-            return alert("请完善任务信息");
+        // 表单验证
+        const errors = {};
+        if (!newTask.title.trim()) errors.title = true;
+        if (!newTask.category.trim()) errors.category = true;
+        if (!newTask.deadline) errors.deadline = true;
+        if (!newTask.duration || parseInt(newTask.duration) <= 0) errors.duration = true;
+
+        if (Object.keys(errors).length > 0) {
+            setFormErrors(errors);
+            // 清除摇晃动画
+            setTimeout(() => setFormErrors({}), 300);
+            toast.warning('请填写所有必填项');
+            return;
         }
 
         let finalStart = newTask.startDate;
@@ -181,7 +192,7 @@ export default function CheckIn() {
         try {
             const taskData = {
                 name: newTask.title,
-                subject: newTask.category || null,  // 直接传递学科名称
+                subject: newTask.category || null,
                 start_date: finalStart,
                 end_date: finalEnd,
                 ddl_time: newTask.deadline || null,
@@ -209,10 +220,10 @@ export default function CheckIn() {
                 category: ''
             }));
 
-            alert('任务创建成功');
+            toast.success('任务创建成功');
         } catch (err) {
             console.error('创建任务失败:', err);
-            alert('创建失败: ' + err.message);
+            toast.error('创建失败: ' + err.message);
         }
     };
 
@@ -231,7 +242,7 @@ export default function CheckIn() {
             setTasks(dayTasks || []);
         } catch (err) {
             console.error('排除任务失败:', err);
-            alert('操作失败: ' + err.message);
+            toast.error('操作失败: ' + err.message);
         }
     };
 
@@ -245,9 +256,10 @@ export default function CheckIn() {
             await tasksApi.delete(taskId);
             setAllTasks(prev => prev.filter(t => t.id !== taskId));
             setTasks(prev => prev.filter(t => t.id !== taskId));
+            toast.success('任务已删除');
         } catch (err) {
             console.error('删除任务失败:', err);
-            alert('删除失败: ' + err.message);
+            toast.error('删除失败: ' + err.message);
         }
     };
 
@@ -413,8 +425,8 @@ export default function CheckIn() {
                         </div>
                         <div className="space-y-2">
                             <input
-                                className="w-full bg-slate-800/50 border border-slate-700/50 rounded-lg p-2 text-sm text-white outline-none focus:bg-slate-800 focus:border-indigo-500 transition-all"
-                                placeholder="任务名称"
+                                className={`w-full bg-slate-800/50 border rounded-lg p-2 text-sm text-white outline-none focus:bg-slate-800 focus:border-indigo-500 transition-all ${formErrors.title ? 'border-red-500 animate-shake' : 'border-slate-700/50'}`}
+                                placeholder="任务名称 *"
                                 value={newTask.title}
                                 onChange={e => setNewTask({ ...newTask, title: e.target.value })}
                             />
@@ -422,10 +434,10 @@ export default function CheckIn() {
                             <div className="flex gap-2 items-end">
                                 {/* 学科输入框 */}
                                 <div className="flex-1 flex flex-col gap-1">
-                                    <span className="text-[10px] text-slate-400 font-medium leading-none">学科</span>
+                                    <span className="text-[10px] text-slate-400 font-medium leading-none">学科 *</span>
                                     <input
                                         list="simple-checkin-subjects"
-                                        className="w-full h-9 bg-slate-800/50 border border-slate-700/50 rounded-lg px-2 text-sm text-white outline-none focus:bg-slate-800 focus:border-indigo-500 transition-all"
+                                        className={`w-full h-9 bg-slate-800/50 border rounded-lg px-2 text-sm text-white outline-none focus:bg-slate-800 focus:border-indigo-500 transition-all ${formErrors.category ? 'border-red-500 animate-shake' : 'border-slate-700/50'}`}
                                         placeholder="选择学科"
                                         value={newTask.category}
                                         onChange={e => setNewTask({ ...newTask, category: e.target.value })}
@@ -437,10 +449,10 @@ export default function CheckIn() {
 
                                 {/* 截止时间输入框 */}
                                 <div className="flex flex-col gap-1">
-                                    <span className="text-[10px] text-slate-400 font-medium leading-none">截止时间</span>
+                                    <span className="text-[10px] text-slate-400 font-medium leading-none">截止时间 *</span>
                                     <input
                                         type="time"
-                                        className="w-24 h-9 bg-slate-800/50 border border-slate-700/50 rounded-lg px-2 text-sm text-white text-center outline-none focus:bg-slate-800 focus:border-indigo-500 transition-all cursor-pointer [&::-webkit-calendar-picker-indicator]:hidden"
+                                        className={`w-24 h-9 bg-slate-800/50 border rounded-lg px-2 text-sm text-white text-center outline-none focus:bg-slate-800 focus:border-indigo-500 transition-all cursor-pointer [&::-webkit-calendar-picker-indicator]:hidden ${formErrors.deadline ? 'border-red-500 animate-shake' : 'border-slate-700/50'}`}
                                         value={newTask.deadline}
                                         onChange={e => setNewTask({ ...newTask, deadline: e.target.value })}
                                         onClick={e => e.target.showPicker()}
@@ -449,10 +461,10 @@ export default function CheckIn() {
 
                                 {/* 预期时长输入框 */}
                                 <div className="flex flex-col gap-1">
-                                    <span className="text-[10px] text-slate-400 font-medium leading-none">时长(分)</span>
+                                    <span className="text-[10px] text-slate-400 font-medium leading-none">时长(分) *</span>
                                     <input
                                         type="number"
-                                        className="w-20 h-9 bg-slate-800/50 border border-slate-700/50 rounded-lg px-2 text-sm text-white text-center outline-none focus:bg-slate-800 focus:border-indigo-500 transition-all"
+                                        className={`w-20 h-9 bg-slate-800/50 border rounded-lg px-2 text-sm text-white text-center outline-none focus:bg-slate-800 focus:border-indigo-500 transition-all ${formErrors.duration ? 'border-red-500 animate-shake' : 'border-slate-700/50'}`}
                                         placeholder="--"
                                         min="1"
                                         value={newTask.duration}
