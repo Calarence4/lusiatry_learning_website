@@ -12,7 +12,7 @@ const calculateStatus = (finished, total) => {
 exports.getAllCourses = async (req, res, next) => {
     try {
         const { subject, status, page, limit } = req.query;
-        
+
         // 分页参数
         const pageNum = parseInt(page) || 1;
         const pageSize = parseInt(limit) || 50;  // 默认50条，不分页时返回全部
@@ -58,14 +58,14 @@ exports.getAllCourses = async (req, res, next) => {
       ${baseQuery}
       ORDER BY c.created_at DESC
     `;
-        
+
         if (isPaginated) {
             dataQuery += ' LIMIT ? OFFSET ?';
             params.push(pageSize, offset);
         }
 
         const [rows] = await pool.query(dataQuery, params);
-        
+
         // 返回分页信息或直接返回数据
         if (isPaginated) {
             success(res, {
@@ -162,7 +162,7 @@ exports.updateCourse = async (req, res, next) => {
         const newFinished = finished_lessons !== undefined ? finished_lessons : oldCourse[0].finished_lessons;
         const newTotal = total_lessons || oldCourse[0].total_lessons;
         const progress = newTotal > 0 ? ((newFinished) / newTotal * 100).toFixed(1) : 0;
-        
+
         // 状态：如果手动设置了 paused，则使用手动状态；否则根据进度自动计算
         // paused 状态只能手动设置，其他状态都是自动计算的
         let status;
@@ -225,11 +225,13 @@ exports.incrementProgress = async (req, res, next) => {
             [newFinished, newProgress, newStatus, id]
         );
 
-        // 记录进度日志
-        await pool.query(
-            'INSERT INTO course_logs (course_id, prev_lessons, new_lessons, note, log_date) VALUES (?, ?, ?, ?, CURDATE())',
-            [id, prevFinished, newFinished, note || null]
-        );
+        // 记录进度日志（只有进度有变化时才记录）
+        if (prevFinished !== newFinished) {
+            await pool.query(
+                'INSERT INTO course_logs (course_id, prev_lessons, new_lessons, note, log_date, created_at) VALUES (?, ?, ?, ?, CURDATE(), NOW())',
+                [id, prevFinished, newFinished, note || null]
+            );
+        }
 
         success(res, {
             finished_lessons: newFinished,
@@ -276,7 +278,7 @@ exports.setProgress = async (req, res, next) => {
         // 如果进度有变化，记录日志
         if (course.finished_lessons !== finished_lessons) {
             await pool.query(
-                'INSERT INTO course_logs (course_id, prev_lessons, new_lessons, note, log_date) VALUES (?, ?, ?, ?, CURDATE())',
+                'INSERT INTO course_logs (course_id, prev_lessons, new_lessons, note, log_date, created_at) VALUES (?, ?, ?, ?, CURDATE(), NOW())',
                 [id, course.finished_lessons, finished_lessons, note || null]
             );
         }
@@ -354,6 +356,41 @@ exports.addLogNote = async (req, res, next) => {
         }
 
         success(res, null, '笔记保存成功');
+    } catch (err) {
+        next(err);
+    }
+};
+
+// 获取学习动态（每个课程只显示最新一条日志，按更新时间排序）
+exports.getRecentActivity = async (req, res, next) => {
+    try {
+        const { limit = 8 } = req.query;
+
+        // 使用子查询获取每个课程的最新日志
+        const [rows] = await pool.query(`
+            SELECT 
+                cl.id,
+                cl.course_id,
+                cl.prev_lessons,
+                cl.new_lessons,
+                cl.log_date,
+                cl.created_at,
+                c.title,
+                c.finished_lessons,
+                c.total_lessons,
+                c.status
+            FROM course_logs cl
+            INNER JOIN (
+                SELECT course_id, MAX(created_at) as max_time
+                FROM course_logs
+                GROUP BY course_id
+            ) latest ON cl.course_id = latest.course_id AND cl.created_at = latest.max_time
+            JOIN courses c ON cl.course_id = c.id
+            ORDER BY cl.created_at DESC
+            LIMIT ?
+        `, [parseInt(limit)]);
+
+        success(res, rows);
     } catch (err) {
         next(err);
     }

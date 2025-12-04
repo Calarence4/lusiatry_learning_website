@@ -29,6 +29,7 @@ export default function Course() {
         statusFilter,
         courseLogs,
         expandedCourseId,
+        recentActivity,
 
         // 设置函数
         setNewCourse,
@@ -51,13 +52,27 @@ export default function Course() {
         toggleCourseLogs,
     } = useCourseData();
 
-    // 状态筛选选项
+    // 格式化时间显示
+    const formatTime = (dateStr) => {
+        const date = new Date(dateStr);
+        const now = new Date();
+        const diffMs = now - date;
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMs / 3600000);
+        const diffDays = Math.floor(diffMs / 86400000);
+
+        if (diffMins < 1) return '刚刚';
+        if (diffMins < 60) return `${diffMins}分钟前`;
+        if (diffHours < 24) return `${diffHours}小时前`;
+        if (diffDays < 7) return `${diffDays}天前`;
+        return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
+    };
+
+    // 状态筛选选项（书签样式，不包含全部和暂停）
     const statusTabs = [
-        { key: 'all', label: '全部', icon: BookOpen, count: stats.total },
-        { key: 'in_progress', label: '进行中', icon: Play, count: stats.inProgress },
-        { key: 'completed', label: '已完成', icon: Check, count: stats.completed },
-        { key: 'not_started', label: '未开始', icon: CircleDot, count: stats.notStarted },
-        { key: 'paused', label: '已暂停', icon: Pause, count: stats.paused },
+        { key: 'in_progress', label: '进行中', icon: Play, count: stats.inProgress, color: 'bg-indigo-500', textColor: 'text-indigo-600' },
+        { key: 'not_started', label: '未开始', icon: CircleDot, count: stats.notStarted, color: 'bg-slate-500', textColor: 'text-slate-600' },
+        { key: 'completed', label: '已完成', icon: Check, count: stats.completed, color: 'bg-emerald-500', textColor: 'text-emerald-600' },
     ];
 
     if (loading) {
@@ -295,7 +310,7 @@ export default function Course() {
                     </div>
 
                     <div className="bg-white/60 backdrop-blur-md rounded-2xl border border-white/60 shadow-sm flex-1 min-h-[500px] flex flex-col overflow-hidden p-5">
-                        {courses.length === 0 ? (
+                        {recentActivity.length === 0 ? (
                             <div className="flex-1 flex flex-col items-center justify-center text-center">
                                 <History size={40} className="text-slate-300 mb-3" />
                                 <h3 className="text-base font-bold text-slate-500 mb-1">暂无学习记录</h3>
@@ -309,11 +324,12 @@ export default function Course() {
 
                                     {/* 时间线项目 */}
                                     <div className="space-y-4">
-                                        {/* 根据课程数据生成时间线项 */}
-                                        {courses.filter(c => c.finished_lessons > 0).slice(0, 8).map((course, idx) => {
-                                            const isCompleted = course.finished_lessons >= course.total_lessons;
+                                        {/* 根据学习动态数据生成时间线项 */}
+                                        {recentActivity.map((activity) => {
+                                            const isCompleted = activity.finished_lessons >= activity.total_lessons;
+                                            const increment = activity.new_lessons - activity.prev_lessons;
                                             return (
-                                                <div key={course.id} className="flex gap-3 relative">
+                                                <div key={activity.id} className="flex gap-3 relative">
                                                     {/* 时间线节点 */}
                                                     <div className={`w-4 h-4 rounded-full shrink-0 z-10 flex items-center justify-center
                                                         ${isCompleted ? 'bg-emerald-500' : 'bg-accent'}`}>
@@ -327,34 +343,35 @@ export default function Course() {
                                                     <div className="flex-1 bg-white/50 rounded-xl p-3 border border-white/50 hover:bg-white/70 transition-colors">
                                                         <div className="flex items-center justify-between mb-1">
                                                             <span className={`text-sm font-bold ${isCompleted ? 'text-emerald-700' : 'text-slate-700'}`}>
-                                                                {course.title}
+                                                                {activity.title}
                                                             </span>
+                                                            <div className="flex items-center gap-2">
+                                                                {/* 增量标签 */}
+                                                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded
+                                                                    ${increment > 0 ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}>
+                                                                    {increment > 0 ? `+${increment}` : increment}
+                                                                </span>
+                                                                {/* 更新时间 */}
+                                                                <span className="text-[10px] text-slate-400">
+                                                                    {formatTime(activity.created_at)}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-center justify-between">
+                                                            <p className="text-xs text-slate-500">
+                                                                {isCompleted
+                                                                    ? `恭喜！已完成全部 ${activity.total_lessons} 课时`
+                                                                    : `已学习 ${activity.finished_lessons}/${activity.total_lessons} 课时`
+                                                                }
+                                                            </p>
                                                             <span className="text-[10px] text-slate-400">
-                                                                {isCompleted ? '已完成' : `进行中 ${course.finished_lessons}/${course.total_lessons}`}
+                                                                {isCompleted ? '已完成' : '进行中'}
                                                             </span>
                                                         </div>
-                                                        <p className="text-xs text-slate-500">
-                                                            {isCompleted
-                                                                ? `恭喜！已完成全部 ${course.total_lessons} 课时`
-                                                                : `已学习 ${course.finished_lessons} 课时，还剩 ${course.total_lessons - course.finished_lessons} 课时`
-                                                            }
-                                                        </p>
                                                     </div>
                                                 </div>
                                             );
                                         })}
-
-                                        {/* 如果没有已学习的课程 */}
-                                        {courses.filter(c => c.finished_lessons > 0).length === 0 && (
-                                            <div className="flex gap-3 relative">
-                                                <div className="w-4 h-4 rounded-full shrink-0 z-10 bg-slate-300 flex items-center justify-center">
-                                                    <Clock size={10} className="text-white" />
-                                                </div>
-                                                <div className="flex-1 bg-white/50 rounded-xl p-3 border border-white/50">
-                                                    <span className="text-sm text-slate-400">开始你的第一课吧...</span>
-                                                </div>
-                                            </div>
-                                        )}
 
                                         {/* 起始节点 */}
                                         <div className="flex gap-3 relative">
@@ -381,239 +398,238 @@ export default function Course() {
                         </div>
                     </div>
 
-                    <div className="bg-white/60 backdrop-blur-md rounded-2xl border border-white/60 shadow-sm flex-1 min-h-[500px] flex flex-col overflow-hidden">
-                        {/* 状态筛选标签 */}
-                        <div className="flex items-center gap-1 p-3 border-b border-slate-200/50 overflow-x-auto shrink-0">
-                            {statusTabs.map(tab => {
+                    <div className="relative flex-1 min-h-[500px] ml-[5px]">
+                        {/* 左侧书签标签 - 隐藏在卡片后面，只露出图标部分 */}
+                        <div className="absolute -left-20 top-6 z-10 flex flex-col gap-1">
+                            {statusTabs.map((tab) => {
                                 const Icon = tab.icon;
                                 const isActive = statusFilter === tab.key;
                                 return (
                                     <button
                                         key={tab.key}
                                         onClick={() => setStatusFilter(tab.key)}
-                                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all
-                                            ${isActive 
-                                                ? 'bg-accent text-white shadow-sm' 
-                                                : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
+                                        className={`flex items-center py-2 pl-2 pr-3 w-20 text-xs font-bold whitespace-nowrap transition-all duration-300 ease-out rounded-l-lg shadow-md
+                                            ${tab.color} text-white
+                                            ${isActive
+                                                ? 'translate-x-[58px] hover:translate-x-0'
+                                                : 'translate-x-[62px] opacity-80 hover:translate-x-0 hover:opacity-100'
                                             }`}
                                     >
-                                        <Icon size={12} />
-                                        <span>{tab.label}</span>
-                                        {tab.count > 0 && (
-                                            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold
-                                                ${isActive ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-600'}`}>
-                                                {tab.count}
-                                            </span>
-                                        )}
+                                        <Icon size={14} className="shrink-0" />
+                                        <span className="ml-1.5">{tab.label}</span>
+                                        <span className="ml-1.5 text-[10px] opacity-80">{tab.count}</span>
                                     </button>
                                 );
                             })}
                         </div>
 
-                        {filteredCourses.length === 0 ? (
-                            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
-                                <GraduationCap size={40} className="text-slate-300 mb-3" />
-                                <h3 className="text-base font-bold text-slate-500 mb-1">
-                                    {statusFilter === 'all' ? '还没有课程' : '没有符合条件的课程'}
-                                </h3>
-                                <p className="text-sm text-slate-400">
-                                    {statusFilter === 'all' ? '在左侧添加课程' : '切换筛选条件查看其他课程'}
-                                </p>
-                            </div>
-                        ) : (
-                            <div className="flex-1 overflow-y-auto custom-scrollbar">
-                                {filteredCourses.map((course, index) => {
-                                    const progress = course.total_lessons > 0
-                                        ? Math.round((course.finished_lessons / course.total_lessons) * 100)
-                                        : 0;
-                                    const isCompleted = course.finished_lessons >= course.total_lessons;
-                                    const customItems = course.custom_items || [];
-                                    const colorStyle = getColorStyles(course.color);
+                        {/* 课程列表内容 */}
+                        <div className="bg-white/60 backdrop-blur-md rounded-2xl border border-white/60 shadow-sm h-full flex flex-col overflow-hidden relative z-20">
+                            {filteredCourses.length === 0 ? (
+                                <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+                                    <GraduationCap size={40} className="text-slate-300 mb-3" />
+                                    <h3 className="text-base font-bold text-slate-500 mb-1">
+                                        没有{statusTabs.find(t => t.key === statusFilter)?.label || ''}的课程
+                                    </h3>
+                                    <p className="text-sm text-slate-400">
+                                        点击左侧标签切换查看其他状态
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="flex-1 overflow-y-auto custom-scrollbar">
+                                    {filteredCourses.map((course, index) => {
+                                        const progress = course.total_lessons > 0
+                                            ? Math.round((course.finished_lessons / course.total_lessons) * 100)
+                                            : 0;
+                                        const isCompleted = course.finished_lessons >= course.total_lessons;
+                                        const customItems = course.custom_items || [];
+                                        const colorStyle = getColorStyles(course.color);
 
-                                    return (
-                                        <div
-                                            key={course.id}
-                                            className={`p-4 group hover:brightness-95 transition-all duration-200 ${colorStyle.bg}
+                                        return (
+                                            <div
+                                                key={course.id}
+                                                className={`p-4 group hover:brightness-95 transition-all duration-200 ${colorStyle.bg}
                                             ${index !== filteredCourses.length - 1 ? 'border-b border-slate-200/50' : ''}`}
-                                        >
-                                            {/* 第一行：课程名称 + 状态标记 + 操作按钮 */}
-                                            <div className="flex items-center justify-between mb-2">
-                                                <div className="flex items-center gap-2 flex-1 min-w-0">
-                                                    <h4 className={`font-bold text-base truncate ${isCompleted ? 'text-emerald-700' : colorStyle.text}`}>
-                                                        {course.title}
-                                                    </h4>
-                                                    {/* 状态标签 */}
-                                                    {isCompleted ? (
-                                                        <span className="bg-emerald-100 text-emerald-600 text-[10px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-0.5 shrink-0">
-                                                            <Check size={10} /> 已完成
-                                                        </span>
-                                                    ) : course.status === 'paused' ? (
-                                                        <span className="bg-amber-100 text-amber-600 text-[10px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-0.5 shrink-0">
-                                                            <Pause size={10} /> 已暂停
-                                                        </span>
-                                                    ) : course.finished_lessons > 0 ? (
-                                                        <span className="bg-indigo-100 text-indigo-600 text-[10px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-0.5 shrink-0">
-                                                            <Play size={10} /> 进行中
-                                                        </span>
-                                                    ) : null}
-                                                </div>
-                                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <button
-                                                        onClick={() => handleEdit(course)}
-                                                        className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-500 hover:bg-indigo-50 transition-all"
-                                                        title="编辑课程"
-                                                    >
-                                                        <Edit3 size={14} />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleDelete(course.id)}
-                                                        className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all"
-                                                    >
-                                                        <Trash2 size={14} />
-                                                    </button>
-                                                </div>
-                                            </div>
-
-                                            {/* 第二行：课程链接 */}
-                                            <div className="flex items-center gap-4 mb-2 text-xs">
-                                                {course.course_url ? (
-                                                    <a
-                                                        href={course.course_url}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="flex items-center gap-1 text-indigo-500 hover:text-indigo-600 hover:underline transition-colors"
-                                                    >
-                                                        <ExternalLink size={12} />
-                                                        <span>课程链接</span>
-                                                    </a>
-                                                ) : (
-                                                    <span className="flex items-center gap-1 text-slate-300">
-                                                        <ExternalLink size={12} />
-                                                        <span>无链接</span>
-                                                    </span>
-                                                )}
-                                                {course.notes_path ? (
-                                                    <Link
-                                                        to={`/knowledge?path=${encodeURIComponent(course.notes_path)}`}
-                                                        className="flex items-center gap-1 text-amber-500 hover:text-amber-600 hover:underline transition-colors"
-                                                    >
-                                                        <FileText size={12} />
-                                                        <span>课程笔记</span>
-                                                    </Link>
-                                                ) : (
-                                                    <span className="flex items-center gap-1 text-slate-300">
-                                                        <FileText size={12} />
-                                                        <span>无笔记</span>
-                                                    </span>
-                                                )}
-                                            </div>
-
-                                            {/* 第三行起：进度区域（预留三行） */}
-                                            <div className="space-y-2">
-                                                {/* 课时进度 - 始终显示 */}
-                                                <div className="flex items-center gap-3">
-                                                    <span className="text-xs text-slate-500 w-12 shrink-0">{progress}%</span>
-                                                    <div className="flex-1 h-3 bg-slate-200/50 rounded-full overflow-hidden">
-                                                        <div
-                                                            className={`h-full rounded-full transition-all duration-300 ${isCompleted ? 'bg-emerald-500' : 'bg-accent'}`}
-                                                            style={{ width: `${progress}%` }}
-                                                        />
-                                                    </div>
-                                                    <div className="flex items-center gap-2 shrink-0">
-                                                        <EditableProgress
-                                                            current={course.finished_lessons}
-                                                            total={course.total_lessons}
-                                                            onSave={(newValue) => handleSetProgress(course.id, newValue)}
-                                                            isCompleted={isCompleted}
-                                                        />
-                                                        <div className="flex items-center gap-0.5">
-                                                            <button
-                                                                onClick={() => handleDecrement(course.id)}
-                                                                disabled={course.finished_lessons <= 0}
-                                                                className="p-1 rounded bg-slate-100/80 text-slate-400 hover:bg-slate-200 hover:text-slate-600 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-                                                            >
-                                                                <ChevronDown size={12} />
-                                                            </button>
-                                                            <button
-                                                                onClick={() => handleIncrement(course.id)}
-                                                                disabled={course.finished_lessons >= course.total_lessons}
-                                                                className="px-2 py-1 rounded bg-accent/90 text-white text-xs font-bold hover:bg-accent disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-                                                            >
-                                                                +1
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                {/* 自定义进度项（最多显示2个，预留空间） */}
-                                                {customItems.slice(0, 2).map((item, idx) => {
-                                                    const itemProgress = item.total > 0 ? Math.round((item.finished / item.total) * 100) : 0;
-                                                    const itemCompleted = item.finished >= item.total;
-                                                    return (
-                                                        <div key={idx} className="flex items-center gap-3">
-                                                            <span className="text-xs text-slate-400 w-12 shrink-0 truncate" title={item.name}>{item.name}</span>
-                                                            <div className="flex-1 h-2 bg-slate-200/50 rounded-full overflow-hidden">
-                                                                <div
-                                                                    className={`h-full rounded-full transition-all duration-300 ${itemCompleted ? 'bg-emerald-400' : 'bg-indigo-400'}`}
-                                                                    style={{ width: `${itemProgress}%` }}
-                                                                />
-                                                            </div>
-                                                            <span className={`text-xs font-medium min-w-[3rem] text-right ${itemCompleted ? 'text-emerald-600' : 'text-slate-600'}`}>
-                                                                {item.finished}/{item.total}
+                                            >
+                                                {/* 第一行：课程名称 + 状态标记 + 操作按钮 */}
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                                                        <h4 className={`font-bold text-base truncate ${isCompleted ? 'text-emerald-700' : colorStyle.text}`}>
+                                                            {course.title}
+                                                        </h4>
+                                                        {/* 状态标签 */}
+                                                        {isCompleted ? (
+                                                            <span className="bg-emerald-100 text-emerald-600 text-[10px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-0.5 shrink-0">
+                                                                <Check size={10} /> 已完成
                                                             </span>
-                                                            {/* 占位，与上面按钮对齐 */}
-                                                            <div className="w-[52px] shrink-0"></div>
-                                                        </div>
-                                                    );
-                                                })}
-
-                                                {/* 查看历史按钮 */}
-                                                <button
-                                                    onClick={() => toggleCourseLogs(course.id)}
-                                                    className="flex items-center gap-1 text-xs text-slate-400 hover:text-indigo-500 transition-colors mt-1"
-                                                >
-                                                    <History size={12} />
-                                                    <span>{expandedCourseId === course.id ? '收起历史' : '查看进度历史'}</span>
-                                                </button>
-
-                                                {/* 进度历史日志 */}
-                                                {expandedCourseId === course.id && (
-                                                    <div className="mt-2 pt-2 border-t border-slate-200/50">
-                                                        {!courseLogs[course.id] ? (
-                                                            <div className="text-xs text-slate-400 py-2">加载中...</div>
-                                                        ) : courseLogs[course.id].length === 0 ? (
-                                                            <div className="text-xs text-slate-400 py-2">暂无进度记录</div>
-                                                        ) : (
-                                                            <div className="space-y-1.5 max-h-32 overflow-y-auto custom-scrollbar">
-                                                                {courseLogs[course.id].map((log, idx) => (
-                                                                    <div key={log.id || idx} className="flex items-center gap-2 text-xs">
-                                                                        <span className="text-slate-400 w-20 shrink-0">
-                                                                            {new Date(log.log_date).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })}
-                                                                        </span>
-                                                                        <span className="text-slate-500">
-                                                                            {log.prev_lessons} → {log.new_lessons}
-                                                                        </span>
-                                                                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium
-                                                                            ${log.new_lessons > log.prev_lessons ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}>
-                                                                            {log.new_lessons > log.prev_lessons ? `+${log.new_lessons - log.prev_lessons}` : log.new_lessons - log.prev_lessons}
-                                                                        </span>
-                                                                        {log.note && (
-                                                                            <span className="text-slate-400 truncate flex-1" title={log.note}>
-                                                                                {log.note}
-                                                                            </span>
-                                                                        )}
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-                                                        )}
+                                                        ) : course.status === 'paused' ? (
+                                                            <span className="bg-amber-100 text-amber-600 text-[10px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-0.5 shrink-0">
+                                                                <Pause size={10} /> 已暂停
+                                                            </span>
+                                                        ) : course.finished_lessons > 0 ? (
+                                                            <span className="bg-indigo-100 text-indigo-600 text-[10px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-0.5 shrink-0">
+                                                                <Play size={10} /> 进行中
+                                                            </span>
+                                                        ) : null}
                                                     </div>
-                                                )}
+                                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <button
+                                                            onClick={() => handleEdit(course)}
+                                                            className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-500 hover:bg-indigo-50 transition-all"
+                                                            title="编辑课程"
+                                                        >
+                                                            <Edit3 size={14} />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleDelete(course.id)}
+                                                            className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all"
+                                                        >
+                                                            <Trash2 size={14} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                {/* 第二行：课程链接 */}
+                                                <div className="flex items-center gap-4 mb-2 text-xs">
+                                                    {course.course_url ? (
+                                                        <a
+                                                            href={course.course_url}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="flex items-center gap-1 text-indigo-500 hover:text-indigo-600 hover:underline transition-colors"
+                                                        >
+                                                            <ExternalLink size={12} />
+                                                            <span>课程链接</span>
+                                                        </a>
+                                                    ) : (
+                                                        <span className="flex items-center gap-1 text-slate-300">
+                                                            <ExternalLink size={12} />
+                                                            <span>无链接</span>
+                                                        </span>
+                                                    )}
+                                                    {course.notes_path ? (
+                                                        <Link
+                                                            to={`/knowledge?path=${encodeURIComponent(course.notes_path)}`}
+                                                            className="flex items-center gap-1 text-amber-500 hover:text-amber-600 hover:underline transition-colors"
+                                                        >
+                                                            <FileText size={12} />
+                                                            <span>课程笔记</span>
+                                                        </Link>
+                                                    ) : (
+                                                        <span className="flex items-center gap-1 text-slate-300">
+                                                            <FileText size={12} />
+                                                            <span>无笔记</span>
+                                                        </span>
+                                                    )}
+                                                </div>
+
+                                                {/* 第三行起：进度区域（预留三行） */}
+                                                <div className="space-y-2">
+                                                    {/* 课时进度 - 始终显示 */}
+                                                    <div className="flex items-center gap-3">
+                                                        <span className="text-xs text-slate-500 w-12 shrink-0">{progress}%</span>
+                                                        <div className="flex-1 h-3 bg-slate-200/50 rounded-full overflow-hidden">
+                                                            <div
+                                                                className={`h-full rounded-full transition-all duration-300 ${isCompleted ? 'bg-emerald-500' : 'bg-accent'}`}
+                                                                style={{ width: `${progress}%` }}
+                                                            />
+                                                        </div>
+                                                        <div className="flex items-center gap-2 shrink-0">
+                                                            <EditableProgress
+                                                                current={course.finished_lessons}
+                                                                total={course.total_lessons}
+                                                                onSave={(newValue) => handleSetProgress(course.id, newValue)}
+                                                                isCompleted={isCompleted}
+                                                            />
+                                                            <div className="flex items-center gap-0.5">
+                                                                <button
+                                                                    onClick={() => handleDecrement(course.id)}
+                                                                    disabled={course.finished_lessons <= 0}
+                                                                    className="p-1 rounded bg-slate-100/80 text-slate-400 hover:bg-slate-200 hover:text-slate-600 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                                                                >
+                                                                    <ChevronDown size={12} />
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => handleIncrement(course.id)}
+                                                                    disabled={course.finished_lessons >= course.total_lessons}
+                                                                    className="px-2 py-1 rounded bg-accent/90 text-white text-xs font-bold hover:bg-accent disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                                                                >
+                                                                    +1
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* 自定义进度项（最多显示2个，预留空间） */}
+                                                    {customItems.slice(0, 2).map((item, idx) => {
+                                                        const itemProgress = item.total > 0 ? Math.round((item.finished / item.total) * 100) : 0;
+                                                        const itemCompleted = item.finished >= item.total;
+                                                        return (
+                                                            <div key={idx} className="flex items-center gap-3">
+                                                                <span className="text-xs text-slate-400 w-12 shrink-0 truncate" title={item.name}>{item.name}</span>
+                                                                <div className="flex-1 h-2 bg-slate-200/50 rounded-full overflow-hidden">
+                                                                    <div
+                                                                        className={`h-full rounded-full transition-all duration-300 ${itemCompleted ? 'bg-emerald-400' : 'bg-indigo-400'}`}
+                                                                        style={{ width: `${itemProgress}%` }}
+                                                                    />
+                                                                </div>
+                                                                <span className={`text-xs font-medium min-w-[3rem] text-right ${itemCompleted ? 'text-emerald-600' : 'text-slate-600'}`}>
+                                                                    {item.finished}/{item.total}
+                                                                </span>
+                                                                {/* 占位，与上面按钮对齐 */}
+                                                                <div className="w-[52px] shrink-0"></div>
+                                                            </div>
+                                                        );
+                                                    })}
+
+                                                    {/* 查看历史按钮 */}
+                                                    <button
+                                                        onClick={() => toggleCourseLogs(course.id)}
+                                                        className="flex items-center gap-1 text-xs text-slate-400 hover:text-indigo-500 transition-colors mt-1"
+                                                    >
+                                                        <History size={12} />
+                                                        <span>{expandedCourseId === course.id ? '收起历史' : '查看进度历史'}</span>
+                                                    </button>
+
+                                                    {/* 进度历史日志 */}
+                                                    {expandedCourseId === course.id && (
+                                                        <div className="mt-2 pt-2 border-t border-slate-200/50">
+                                                            {!courseLogs[course.id] ? (
+                                                                <div className="text-xs text-slate-400 py-2">加载中...</div>
+                                                            ) : courseLogs[course.id].length === 0 ? (
+                                                                <div className="text-xs text-slate-400 py-2">暂无进度记录</div>
+                                                            ) : (
+                                                                <div className="space-y-1.5 max-h-32 overflow-y-auto custom-scrollbar">
+                                                                    {courseLogs[course.id].map((log, idx) => (
+                                                                        <div key={log.id || idx} className="flex items-center gap-2 text-xs">
+                                                                            <span className="text-slate-400 w-20 shrink-0">
+                                                                                {new Date(log.log_date).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })}
+                                                                            </span>
+                                                                            <span className="text-slate-500">
+                                                                                {log.prev_lessons} → {log.new_lessons}
+                                                                            </span>
+                                                                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium
+                                                                            ${log.new_lessons > log.prev_lessons ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}>
+                                                                                {log.new_lessons > log.prev_lessons ? `+${log.new_lessons - log.prev_lessons}` : log.new_lessons - log.prev_lessons}
+                                                                            </span>
+                                                                            {log.note && (
+                                                                                <span className="text-slate-400 truncate flex-1" title={log.note}>
+                                                                                    {log.note}
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>

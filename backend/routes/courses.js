@@ -3,6 +3,7 @@ const router = express.Router();
 const controller = require('../controllers/coursesController');
 
 router.get('/stats', controller.getCourseStats);
+router.get('/activity', controller.getRecentActivity);  // 学习动态
 router.get('/', controller.getAllCourses);
 router.get('/:id', controller.getCourseById);
 router.get('/:id/logs', controller.getCourseLogs);

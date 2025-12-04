@@ -9,13 +9,14 @@ export default function useCourseData() {
     const [loading, setLoading] = useState(true);
     const [editingCourse, setEditingCourse] = useState(null);
     const [showEditModal, setShowEditModal] = useState(false);
-    
+
     // 状态筛选
-    const [statusFilter, setStatusFilter] = useState('all'); // all, not_started, in_progress, completed, paused
-    
+    const [statusFilter, setStatusFilter] = useState('in_progress'); // not_started, in_progress, completed, paused
+
     // 课程日志
     const [courseLogs, setCourseLogs] = useState({});  // { courseId: [logs] }
     const [expandedCourseId, setExpandedCourseId] = useState(null);  // 当前展开显示日志的课程
+    const [recentActivity, setRecentActivity] = useState([]);  // 学习动态
 
     // 新课程表单
     const [newCourse, setNewCourse] = useState({
@@ -53,12 +54,14 @@ export default function useCourseData() {
         async function fetchData() {
             try {
                 setLoading(true);
-                const [coursesData, subjectsData] = await Promise.all([
+                const [coursesData, subjectsData, activityData] = await Promise.all([
                     coursesApi.getAll(),
-                    subjectsApi.getAll()
+                    subjectsApi.getAll(),
+                    coursesApi.getActivity(8)
                 ]);
                 setCourses(coursesData || []);
                 setSubjects(subjectsData || []);
+                setRecentActivity(activityData || []);
             } catch (err) {
                 console.error('加载数据失败:', err);
             } finally {
@@ -66,6 +69,16 @@ export default function useCourseData() {
             }
         }
         fetchData();
+    }, []);
+
+    // 刷新学习动态
+    const refreshActivity = useCallback(async () => {
+        try {
+            const activityData = await coursesApi.getActivity(8);
+            setRecentActivity(activityData || []);
+        } catch (err) {
+            console.error('刷新学习动态失败:', err);
+        }
     }, []);
 
     // 学科建议列表
@@ -87,12 +100,11 @@ export default function useCourseData() {
 
     // 筛选后的课程列表
     const filteredCourses = useMemo(() => {
-        if (statusFilter === 'all') return courses;
         return courses.filter(c => {
             // 兼容旧数据：如果没有status字段，根据进度判断
             const status = c.status || (
                 c.finished_lessons === 0 ? 'not_started' :
-                c.finished_lessons >= c.total_lessons ? 'completed' : 'in_progress'
+                    c.finished_lessons >= c.total_lessons ? 'completed' : 'in_progress'
             );
             return status === statusFilter;
         });
@@ -133,13 +145,15 @@ export default function useCourseData() {
         try {
             const result = await coursesApi.increment(id);
             setCourses(prev => prev.map(c =>
-                c.id === id ? { ...c, finished_lessons: result.finished_lessons } : c
+                c.id === id ? { ...c, finished_lessons: result.finished_lessons, status: result.status } : c
             ));
+            // 刷新学习动态
+            refreshActivity();
         } catch (err) {
             console.error('更新失败:', err);
             toast.error('操作失败: ' + err.message);
         }
-    }, [toast]);
+    }, [toast, refreshActivity]);
 
     // 减少课时
     const handleDecrement = useCallback(async (id) => {
@@ -149,13 +163,15 @@ export default function useCourseData() {
         try {
             const result = await coursesApi.setProgress(id, course.finished_lessons - 1);
             setCourses(prev => prev.map(c =>
-                c.id === id ? { ...c, finished_lessons: result.finished_lessons } : c
+                c.id === id ? { ...c, finished_lessons: result.finished_lessons, status: result.status } : c
             ));
+            // 刷新学习动态
+            refreshActivity();
         } catch (err) {
             console.error('更新失败:', err);
             toast.error('操作失败: ' + err.message);
         }
-    }, [courses, toast]);
+    }, [courses, toast, refreshActivity]);
 
     // 删除课程
     const handleDelete = useCallback(async (id) => {
@@ -199,7 +215,7 @@ export default function useCourseData() {
         if (!newCourse.title) {
             return toast.warning('请填写课程名称');
         }
-        
+
         const totalLessons = parseInt(newCourse.total_lessons);
         if (!totalLessons || totalLessons < 1) {
             return toast.warning('总课时必须至少为 1');
@@ -313,6 +329,7 @@ export default function useCourseData() {
         statusFilter,
         courseLogs,
         expandedCourseId,
+        recentActivity,
 
         // 设置函数
         setNewCourse,
@@ -334,5 +351,6 @@ export default function useCourseData() {
         closeEditModal,
         toggleCourseLogs,
         fetchCourseLogs,
+        refreshActivity,
     };
 }

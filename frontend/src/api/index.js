@@ -78,6 +78,7 @@ export const coursesApi = {
     getAll: (params) => api.get('/courses', { params }).then(handleResponse),
     getById: (id) => api.get(`/courses/${id}`).then(handleResponse),
     getStats: () => api.get('/courses/stats').then(handleResponse),
+    getActivity: (limit = 8) => api.get('/courses/activity', { params: { limit } }).then(handleResponse),
     getLogs: (id, limit) => api.get(`/courses/${id}/logs`, { params: { limit } }).then(handleResponse),
     create: (data) => api.post('/courses', data).then(handleResponse),
     update: (id, data) => api.put(`/courses/${id}`, data).then(handleResponse),
