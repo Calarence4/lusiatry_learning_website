@@ -108,7 +108,7 @@ export default function Home() {
             setTasksData(todayTasks || []);
             setTodayFocusTime(focusTimeData?.total_duration || 0);
             setTodayNotesCount(todayNotesData?.count || 0);
-            
+
             // 初始化已完成任务的状态
             const completedState = {};
             (todayTasks || []).forEach(task => {
@@ -117,39 +117,29 @@ export default function Home() {
                 }
             });
             setCompleted(completedState);
-            
-            // 从知识库草稿箱获取待整理笔记数（递归计算所有文件）
+
+            // 从知识库草稿箱获取待整理笔记数（只计算直接子文件，不递归）
             const draftBox = await fileTreeApi.ensureDraftBox();
             const tree = await fileTreeApi.getTree();
-            
-            // 递归计算节点下所有文件数量
-            const countAllFiles = (nodes) => {
-                let count = 0;
-                for (const node of nodes) {
-                    if (node.type === 'file') {
-                        count++;
-                    }
-                    if (node.children && node.children.length > 0) {
-                        count += countAllFiles(node.children);
-                    }
-                }
-                return count;
-            };
-            
-            // 找到草稿箱并计算其下所有文件数
+
+            // 找到草稿箱并计算其直接子文件数（不递归子文件夹）
             const findDraftBoxAndCount = (nodes) => {
                 for (const node of nodes) {
                     if (node.id === draftBox.id) {
-                        return countAllFiles(node.children || []);
+                        // 只计算草稿箱的直接子文件
+                        const directFiles = (node.children || []).filter(child => child.type === 'file');
+                        return directFiles.length;
                     }
-                    if (node.children) {
+                    if (node.children && node.children.length > 0) {
                         const count = findDraftBoxAndCount(node.children);
-                        if (count >= 0) return count;
+                        if (count !== -1) return count; // 找到了草稿箱
                     }
                 }
-                return 0;
+                return -1; // 没找到草稿箱
             };
-            setPendingNotesCount(findDraftBoxAndCount(tree || []));
+
+            const count = findDraftBoxAndCount(tree || []);
+            setPendingNotesCount(count === -1 ? 0 : count);
         } catch (err) {
             console.error('加载数据失败:', err);
         }
@@ -174,13 +164,13 @@ export default function Home() {
         let lessThan1h = 0; let lessThan2h = 0;
         const overdueIds = [];
         const urgentIds = [];
-        
+
         visibleTasks.forEach(task => {
             if (!task.ddl_time) return;
             const [hours, minutes] = task.ddl_time.split(':');
             const deadlineDate = set(now, { hours: parseInt(hours), minutes: parseInt(minutes), seconds: 0 });
             const diffMin = differenceInMinutes(deadlineDate, now);
-            
+
             if (diffMin < 0) {
                 // 已超时
                 overdueIds.push(task.id);
@@ -191,7 +181,7 @@ export default function Home() {
                 lessThan2h++;
             }
         });
-        
+
         const isGlobalWarning = (lessThan1h >= 2) || (lessThan1h >= 1 && lessThan2h >= 2) || overdueIds.length > 0;
         return {
             isGlobalWarning,
@@ -201,7 +191,7 @@ export default function Home() {
     }, [visibleTasks]);
 
     const isAllFinished = visibleTasks.length === 0;
-    
+
     const toggleHomeTask = async (id) => {
         const todayStr = format(today, 'yyyy-MM-dd');
         try {
@@ -248,7 +238,7 @@ export default function Home() {
             const bOverdue = warningState.overdueIds.includes(b.id);
             const aUrgent = warningState.urgentIds.includes(a.id);
             const bUrgent = warningState.urgentIds.includes(b.id);
-            
+
             if (aOverdue && !bOverdue) return -1;
             if (!aOverdue && bOverdue) return 1;
             if (aUrgent && !bUrgent) return -1;
@@ -278,7 +268,7 @@ export default function Home() {
             const isPrimaryUrgent = warningState.urgentIds.includes(primaryTask.id);
             const isSecondaryOverdue = secondaryTask && warningState.overdueIds.includes(secondaryTask.id);
             const isSecondaryUrgent = secondaryTask && warningState.urgentIds.includes(secondaryTask.id);
-            
+
             const hasOverdueInBlock = isPrimaryOverdue || isSecondaryOverdue;
             const hasUrgentInBlock = isPrimaryUrgent || isSecondaryUrgent || hasOverdueInBlock;
 

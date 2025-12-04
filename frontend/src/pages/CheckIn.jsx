@@ -44,12 +44,33 @@ export default function CheckIn() {
         async function fetchInitialData() {
             try {
                 setLoading(true);
-                const [subjectsData, tasksData] = await Promise.all([
+                const year = format(selectedDate, 'yyyy');
+                const month = format(selectedDate, 'M');
+                
+                const [subjectsData, tasksData, monthLogs] = await Promise.all([
                     subjectsApi.getAll(),
-                    tasksApi.getAll()
+                    tasksApi.getAll(),
+                    tasksApi.getMonthLogs(year, month)
                 ]);
                 setSubjects(subjectsData || []);
                 setAllTasks(tasksData || []);
+                
+                // 构建完成状态和排除状态
+                const completedLogs = {};
+                const excludedLogs = {};
+                (monthLogs || []).forEach(log => {
+                    const logDate = new Date(log.log_date);
+                    const dateStr = format(logDate, 'yyyy-MM-dd');
+                    const key = `${log.task_id}-${dateStr}`;
+                    if (log.is_completed) {
+                        completedLogs[key] = true;
+                    }
+                    if (log.is_excluded) {
+                        excludedLogs[key] = true;
+                    }
+                });
+                setCompletedLog(completedLogs);
+                setExceptionLog(excludedLogs);
             } catch (err) {
                 console.error('加载数据失败:', err);
             } finally {
@@ -58,6 +79,47 @@ export default function CheckIn() {
         }
         fetchInitialData();
     }, []);
+
+    // 当前月份标识（用于依赖判断）
+    const currentMonth = format(selectedDate, 'yyyy-MM');
+
+    // ============================================
+    // 【修改】切换月份时加载新月份的完成日志
+    // ============================================
+    const [initialMonth] = useState(format(new Date(), 'yyyy-MM'));
+    useEffect(() => {
+        // 跳过初始月份（已在 fetchInitialData 中加载）
+        if (currentMonth === initialMonth) return;
+        
+        async function fetchMonthLogs() {
+            try {
+                const year = format(selectedDate, 'yyyy');
+                const month = format(selectedDate, 'M');
+                const logs = await tasksApi.getMonthLogs(year, month);
+                
+                // 构建完成状态和排除状态
+                const completedLogs = {};
+                const excludedLogs = {};
+                (logs || []).forEach(log => {
+                    const logDate = new Date(log.log_date);
+                    const dateStr = format(logDate, 'yyyy-MM-dd');
+                    const key = `${log.task_id}-${dateStr}`;
+                    if (log.is_completed) {
+                        completedLogs[key] = true;
+                    }
+                    if (log.is_excluded) {
+                        excludedLogs[key] = true;
+                    }
+                });
+                
+                setCompletedLog(prev => ({ ...prev, ...completedLogs }));
+                setExceptionLog(prev => ({ ...prev, ...excludedLogs }));
+            } catch (err) {
+                console.error('加载月份日志失败:', err);
+            }
+        }
+        fetchMonthLogs();
+    }, [currentMonth, initialMonth]);
 
     // ============================================
     // 【新增】加载选中日期的任务

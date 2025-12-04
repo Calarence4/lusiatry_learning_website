@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import {
-    ArrowLeft, Search, FolderPlus, FileEdit, Save, Inbox, Plus, FilePlus,
-    Eye, Edit3, BookOpen, Link2
+    ArrowLeft, Search, FolderPlus, Save, Inbox, Plus, FilePlus,
+    BookOpen, Link2, Pencil, FileText
 } from 'lucide-react';
 import { fileTreeApi } from '../../api';
 import { useToast } from '../../components/Toast';
@@ -10,7 +10,8 @@ import { useToast } from '../../components/Toast';
 // 导入子组件
 import FileTreeItem from './FileTreeItem';
 import MarkdownPreview from './MarkdownPreview';
-import MarkdownEditor from './MarkdownEditor';
+import LivePreviewEditor from './LivePreviewEditor';
+import EditorToolbar from './EditorToolbar';
 import { CreateFolderModal, CreateFileModal } from './Modals';
 
 // 主组件
@@ -25,10 +26,18 @@ export default function KnowledgeBase() {
 
     const [editContent, setEditContent] = useState('');
     const [saving, setSaving] = useState(false);
-    const [showPreview, setShowPreview] = useState(true);
-    
+
+    // 新建笔记名称
+    const [newNoteName, setNewNoteName] = useState('');
+    const [nameInputShake, setNameInputShake] = useState(false);
+
     // 阅读/编辑模式切换
-    const [viewMode, setViewMode] = useState('edit'); // 'edit' | 'read'
+    const [viewMode, setViewMode] = useState('read'); // 'read' | 'edit' - 默认阅读模式
+    // 编辑子模式：阅览模式（live）或源代码模式（source）
+    const [editMode, setEditMode] = useState('live'); // 'live' | 'source'
+
+    // 编辑器引用
+    const editorRef = useRef(null);
 
     // 模态框状态
     const [showCreateFolderModal, setShowCreateFolderModal] = useState(false);
@@ -81,7 +90,7 @@ export default function KnowledgeBase() {
         }
     }, [searchParams]);
 
-    // 选择文件
+    // 选择文件 - 选中后自动进入阅读模式
     const handleSelectFile = useCallback(async (node) => {
         if (node.type === 'folder') return;
         setSearchParams({ id: node.id });
@@ -89,6 +98,7 @@ export default function KnowledgeBase() {
             const fullData = await fileTreeApi.getById(node.id);
             setActiveFile(fullData);
             setEditContent(fullData.content || '');
+            setViewMode('read'); // 选中文件自动进入阅读模式
         } catch (err) {
             console.error('加载文件失败:', err);
             toast.error('加载文件失败');
@@ -112,22 +122,27 @@ export default function KnowledgeBase() {
         }
     }, [activeFile, editContent, toast]);
 
-    // 保存为笔记
+    // 保存为笔记（直接使用输入框的名称）
     const handleSaveAsNote = useCallback(async () => {
         if (!editContent.trim()) return toast.warning('请输入内容');
 
-        const title = prompt('请输入笔记标题：');
-        if (!title?.trim()) return;
+        // 检查名称是否填写
+        if (!newNoteName.trim()) {
+            setNameInputShake(true);
+            setTimeout(() => setNameInputShake(false), 500);
+            return;
+        }
 
         try {
             setSaving(true);
             await fileTreeApi.create({
-                title: title.trim(),
+                title: newNoteName.trim(),
                 type: 'file',
                 parent_id: null,
                 content: editContent
             });
             setEditContent('');
+            setNewNoteName('');
             setActiveFile(null);
             setSearchParams({});
             fetchFileTree();
@@ -137,14 +152,23 @@ export default function KnowledgeBase() {
         } finally {
             setSaving(false);
         }
-    }, [editContent, fetchFileTree, setSearchParams, toast]);
+    }, [editContent, newNoteName, fetchFileTree, setSearchParams, toast]);
 
     // 保存为草稿
     const handleSaveAsDraft = useCallback(async () => {
         if (!editContent.trim()) return toast.warning('请输入内容');
         if (!draftBoxId) return toast.error('草稿箱未创建');
 
-        const title = `草稿 ${new Date().toLocaleString()}`;
+        // 检查名称是否填写，如果填写了就用填写的，否则用默认名称
+        let title;
+        if (newNoteName.trim()) {
+            title = newNoteName.trim();
+        } else {
+            // 如果没有填写名称，触发摇晃提示
+            setNameInputShake(true);
+            setTimeout(() => setNameInputShake(false), 500);
+            return;
+        }
 
         try {
             setSaving(true);
@@ -155,6 +179,7 @@ export default function KnowledgeBase() {
                 content: editContent
             });
             setEditContent('');
+            setNewNoteName('');
             fetchFileTree();
             toast.success('已保存到草稿箱');
         } catch (err) {
@@ -162,7 +187,7 @@ export default function KnowledgeBase() {
         } finally {
             setSaving(false);
         }
-    }, [editContent, draftBoxId, fetchFileTree, toast]);
+    }, [editContent, newNoteName, draftBoxId, fetchFileTree, toast]);
 
     // 创建文件夹
     const handleCreateFolder = useCallback(async (data) => {
@@ -266,11 +291,11 @@ export default function KnowledgeBase() {
             return null;
         };
         const parentName = findFolder(fileTree) || '根目录';
-        
+
         // 这里可以弹出模态框或直接创建
         const title = prompt(`在 "${parentName}" 中创建文件夹\n请输入文件夹名称：`);
         if (!title?.trim()) return;
-        
+
         fileTreeApi.create({
             title: title.trim(),
             type: 'folder',
@@ -295,7 +320,10 @@ export default function KnowledgeBase() {
     const handleNewBlankFile = useCallback(() => {
         setActiveFile(null);
         setEditContent('');
+        setNewNoteName('');
         setSearchParams({});
+        setViewMode('edit');
+        setEditMode('live');
     }, [setSearchParams]);
 
     // 搜索过滤
@@ -342,7 +370,7 @@ export default function KnowledgeBase() {
     const handleWikiLinkClick = useCallback(async (noteName) => {
         // 查找笔记
         const note = allNotes.find(n => n.title?.toLowerCase() === noteName.toLowerCase());
-        
+
         if (note) {
             // 笔记存在，跳转
             setSearchParams({ id: note.id });
@@ -350,7 +378,7 @@ export default function KnowledgeBase() {
                 const fullData = await fileTreeApi.getById(note.id);
                 setActiveFile(fullData);
                 setEditContent(fullData.content || '');
-                setViewMode('read'); // 打开时默认阅读模式
+                setViewMode('read'); // 打开时进入阅读模式
             } catch (err) {
                 toast.error('加载笔记失败');
             }
@@ -369,7 +397,8 @@ export default function KnowledgeBase() {
                     setSearchParams({ id: newFile.id });
                     setActiveFile({ id: newFile.id, title: noteName, type: 'file', content: `# ${noteName}\n\n` });
                     setEditContent(`# ${noteName}\n\n`);
-                    setViewMode('edit');
+                    setViewMode('edit'); // 新建笔记进入编辑模式
+                    setEditMode('live'); // 默认阅览模式
                     toast.success('笔记创建成功');
                 } catch (err) {
                     toast.error('创建笔记失败: ' + err.message);
@@ -377,6 +406,13 @@ export default function KnowledgeBase() {
             }
         }
     }, [allNotes, setSearchParams, fetchFileTree, toast]);
+
+    // 工具栏插入文本
+    const handleToolbarInsert = useCallback((prefix, suffix, placeholder) => {
+        if (editorRef.current?.insertText) {
+            editorRef.current.insertText(prefix, suffix, placeholder);
+        }
+    }, []);
 
     if (loading) {
         return (
@@ -502,7 +538,7 @@ export default function KnowledgeBase() {
                                             </div>
                                             <p className="text-slate-600 font-medium">知识库为空</p>
                                             <p className="text-xs text-slate-400 leading-relaxed">
-                                                点击上方按钮创建文件夹或文件<br/>
+                                                点击上方按钮创建文件夹或文件<br />
                                                 开始记录你的学习笔记吧！
                                             </p>
                                         </div>
@@ -538,35 +574,23 @@ export default function KnowledgeBase() {
                             <div className="h-5 w-1 rounded-full bg-emerald-500"></div>
                             <h3 className="font-bold text-slate-700">{activeFile ? activeFile.title : '新建笔记'}</h3>
                             {activeFile && (
-                                <span className={`text-xs px-2 py-0.5 rounded-full ${viewMode === 'read' ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
-                                    {viewMode === 'read' ? '阅读中' : '编辑中'}
+                                <span className={`text-xs px-2 py-0.5 rounded-full ${viewMode === 'read'
+                                    ? 'bg-emerald-100 text-emerald-600'
+                                    : editMode === 'live'
+                                        ? 'bg-indigo-100 text-indigo-600'
+                                        : 'bg-slate-100 text-slate-600'
+                                    }`}>
+                                    {viewMode === 'read' ? '阅读中' : editMode === 'live' ? '阅览编辑' : '源码编辑'}
                                 </span>
                             )}
                         </div>
-                        
-                        {/* 模式切换按钮 */}
-                        {activeFile && (
-                            <div className="flex items-center gap-1 bg-white/60 backdrop-blur-md rounded-lg p-1 border border-white/60">
-                                <button
-                                    onClick={() => setViewMode('edit')}
-                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm transition-colors ${viewMode === 'edit' ? 'bg-indigo-500 text-white' : 'text-slate-500 hover:bg-white/50'}`}
-                                >
-                                    <Edit3 size={14} /> 编辑
-                                </button>
-                                <button
-                                    onClick={() => setViewMode('read')}
-                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm transition-colors ${viewMode === 'read' ? 'bg-emerald-500 text-white' : 'text-slate-500 hover:bg-white/50'}`}
-                                >
-                                    <BookOpen size={14} /> 阅读
-                                </button>
-                            </div>
-                        )}
                     </div>
 
                     <div className="bg-white/60 backdrop-blur-md rounded-2xl border border-white/60 shadow-sm overflow-hidden flex-1 flex flex-col">
-                        {/* 阅读模式 */}
+                        {/* 阅读模式 - 选中笔记时的默认模式 */}
                         {viewMode === 'read' && activeFile ? (
                             <div className="flex-1 flex flex-col overflow-hidden">
+                                {/* 阅读模式顶栏 - 无工具条 */}
                                 <div className="px-4 py-2.5 bg-white/30 text-xs font-medium text-slate-500 border-b border-white/40 flex items-center justify-between">
                                     <div className="flex items-center gap-2">
                                         <BookOpen size={14} />
@@ -577,101 +601,161 @@ export default function KnowledgeBase() {
                                         <span>支持 [[双链]] 和 $数学公式$</span>
                                     </div>
                                 </div>
+                                {/* 纯渲染显示 - 不展示 Markdown 源代码 */}
                                 <div className="flex-1 p-6 overflow-y-auto prose prose-slate prose-lg max-w-none">
-                                    <MarkdownPreview 
-                                        content={editContent} 
+                                    <MarkdownPreview
+                                        content={editContent}
                                         existingNotes={allNotes}
                                         onWikiLinkClick={handleWikiLinkClick}
                                     />
                                 </div>
+                                {/* 底部"编辑模式"按钮 */}
+                                <div className="p-4 border-t border-white/40 bg-white/20 flex items-center justify-center shrink-0">
+                                    <button
+                                        onClick={() => {
+                                            setViewMode('edit');
+                                            setEditMode('live'); // 默认进入阅览模式
+                                        }}
+                                        className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-colors shadow-md"
+                                    >
+                                        <Pencil size={16} /> 进入编辑模式
+                                    </button>
+                                </div>
                             </div>
-                        ) : (
+                        ) : viewMode === 'edit' ? (
                             /* 编辑模式 */
-                            <>
-                                <div className="flex-1 flex overflow-hidden">
-                                    {/* 编辑器 */}
-                                    <div className={`flex flex-col ${showPreview ? 'w-1/2 border-r border-white/40' : 'w-full'}`}>
-                                        <div className="px-4 py-2.5 bg-white/30 text-xs font-medium text-slate-500 border-b border-white/40 flex items-center gap-2">
-                                            <FileEdit size={14} />
-                                            Markdown 编辑
-                                            <span className="text-slate-300 ml-2">支持 $数学公式$ 和 [[双链]]</span>
-                                        </div>
-                                        <textarea
-                                            className="flex-1 p-4 bg-transparent text-sm text-slate-700 resize-none outline-none font-mono leading-relaxed"
-                                            placeholder="使用 Markdown 语法书写笔记...&#10;&#10;支持的语法：&#10;# 标题&#10;**粗体** *斜体*&#10;- 列表项&#10;$E=mc^2$ 数学公式&#10;[[笔记名]] 双链引用"
-                                            value={editContent}
-                                            onChange={(e) => setEditContent(e.target.value)}
-                                            onKeyDown={(e) => {
-                                                // Ctrl+S 保存
-                                                if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-                                                    e.preventDefault();
-                                                    if (activeFile) {
-                                                        handleSaveToFile();
-                                                    }
-                                                }
-                                                // Ctrl+E 切换阅读模式
-                                                if ((e.ctrlKey || e.metaKey) && e.key === 'e') {
-                                                    e.preventDefault();
-                                                    if (activeFile) {
-                                                        setViewMode('read');
-                                                    }
-                                                }
-                                            }}
-                                        />
-                                    </div>
+                            <div className="flex-1 flex flex-col overflow-hidden">
+                                {/* 编辑工具条 - 仅在编辑模式下显示 */}
+                                <EditorToolbar
+                                    editMode={editMode}
+                                    onEditModeChange={setEditMode}
+                                    onInsert={handleToolbarInsert}
+                                />
 
-                                    {/* 预览区 */}
-                                    {showPreview && (
-                                        <div className="w-1/2 flex flex-col">
-                                            <div className="px-4 py-2.5 bg-white/30 text-xs font-medium text-slate-500 border-b border-white/40 flex items-center justify-between">
-                                                <span>实时预览</span>
-                                                <button
-                                                    onClick={() => setShowPreview(false)}
-                                                    className="text-slate-400 hover:text-slate-600"
-                                                >
-                                                    ✕
-                                                </button>
-                                            </div>
-                                            <div className="flex-1 p-4 overflow-y-auto prose prose-slate prose-sm max-w-none">
-                                                <MarkdownPreview 
-                                                    content={editContent}
-                                                    existingNotes={allNotes}
-                                                    onWikiLinkClick={handleWikiLinkClick}
-                                                />
-                                            </div>
+                                {/* 编辑器区域 */}
+                                <div className="flex-1 flex overflow-hidden">
+                                    {editMode === 'live' ? (
+                                        /* 阅览模式 (Live Preview) - 默认子模式 */
+                                        <div className="flex-1 flex flex-col overflow-hidden">
+                                            <LivePreviewEditor
+                                                ref={editorRef}
+                                                content={editContent}
+                                                onChange={setEditContent}
+                                                onSave={activeFile ? handleSaveToFile : undefined}
+                                                editMode={editMode}
+                                            />
+                                        </div>
+                                    ) : (
+                                        /* 源代码模式 - 纯文本编辑 */
+                                        <div className="flex-1 flex flex-col">
+                                            <textarea
+                                                className="flex-1 p-6 bg-transparent text-sm text-slate-700 resize-none outline-none font-mono leading-relaxed"
+                                                placeholder="使用 Markdown 语法书写笔记..."
+                                                value={editContent}
+                                                onChange={(e) => setEditContent(e.target.value)}
+                                                onKeyDown={(e) => {
+                                                    // Ctrl+S 保存
+                                                    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                                                        e.preventDefault();
+                                                        if (activeFile) {
+                                                            handleSaveToFile();
+                                                        }
+                                                    }
+                                                }}
+                                            />
                                         </div>
                                     )}
                                 </div>
-                            </>
-                        )}
 
-                        {/* 底部操作栏 */}
-                        <div className="p-4 border-t border-white/40 bg-white/20 flex items-center justify-between shrink-0">
-                            <div className="flex items-center gap-3">
-                                {viewMode === 'edit' && (
-                                    <button
-                                        onClick={() => setShowPreview(prev => !prev)}
-                                        className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${showPreview ? 'bg-indigo-100 text-indigo-600' : 'bg-white/50 text-slate-500 hover:bg-white'}`}
-                                    >
-                                        {showPreview ? '隐藏预览' : '显示预览'}
-                                    </button>
-                                )}
-                                <span className="text-xs text-slate-400 hidden sm:inline">
-                                    Ctrl+S 保存 | Ctrl+E 切换阅读模式 | [[双链]] $公式$
-                                </span>
+                                {/* 底部操作栏 */}
+                                <div className="p-4 border-t border-white/40 bg-white/20 flex items-center justify-between shrink-0">
+                                    <div className="flex items-center gap-3">
+                                        <span className="text-xs text-slate-400 hidden sm:inline">
+                                            Ctrl+S 保存 | [[双链]] $公式$
+                                        </span>
+                                    </div>
+
+                                    <div className="flex gap-3">
+                                        {activeFile && (
+                                            <button
+                                                onClick={() => setViewMode('read')}
+                                                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-sm flex items-center gap-2 transition-colors"
+                                            >
+                                                <BookOpen size={16} /> 返回阅读
+                                            </button>
+                                        )}
+                                        {activeFile ? (
+                                            <button
+                                                onClick={() => handleSaveToFile()}
+                                                disabled={saving || !editContent.trim()}
+                                                className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                            >
+                                                <Save size={16} /> {saving ? '保存中...' : '保存'}
+                                            </button>
+                                        ) : (
+                                            <>
+                                                <button
+                                                    onClick={handleSaveAsNote}
+                                                    disabled={saving || !editContent.trim()}
+                                                    className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                                >
+                                                    <Save size={16} /> 保存为笔记
+                                                </button>
+                                                <button
+                                                    onClick={handleSaveAsDraft}
+                                                    disabled={saving || !editContent.trim()}
+                                                    className="px-4 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                                >
+                                                    <Inbox size={16} /> 保存为草稿
+                                                </button>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
-
-                            <div className="flex gap-3">
-                                {activeFile ? (
-                                    <button
-                                        onClick={() => handleSaveToFile()}
-                                        disabled={saving || !editContent.trim()}
-                                        className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                                    >
-                                        <Save size={16} /> {saving ? '保存中...' : '保存'}
-                                    </button>
-                                ) : (
-                                    <>
+                        ) : (
+                            /* 无文件选中时的新建模式 */
+                            <div className="flex-1 flex flex-col overflow-hidden">
+                                {/* 笔记名称输入框 */}
+                                <div className="px-4 py-3 bg-white/30 border-b border-white/40 flex items-center gap-3">
+                                    <FileText size={18} className="text-slate-400 shrink-0" />
+                                    <input
+                                        type="text"
+                                        placeholder="请输入笔记名称..."
+                                        value={newNoteName}
+                                        onChange={(e) => setNewNoteName(e.target.value)}
+                                        className={`flex-1 bg-transparent text-lg font-medium text-slate-700 placeholder:text-slate-400 outline-none transition-all
+                                            ${nameInputShake ? 'text-red-500 placeholder:text-red-400 animate-shake' : ''}`}
+                                    />
+                                </div>
+                                <EditorToolbar
+                                    editMode={editMode}
+                                    onEditModeChange={setEditMode}
+                                    onInsert={handleToolbarInsert}
+                                />
+                                <div className="flex-1 flex overflow-hidden">
+                                    {editMode === 'live' ? (
+                                        <div className="flex-1 flex flex-col overflow-hidden">
+                                            <LivePreviewEditor
+                                                ref={editorRef}
+                                                content={editContent}
+                                                onChange={setEditContent}
+                                                editMode={editMode}
+                                            />
+                                        </div>
+                                    ) : (
+                                        <div className="flex-1 flex flex-col">
+                                            <textarea
+                                                className="flex-1 p-6 bg-transparent text-sm text-slate-700 resize-none outline-none font-mono leading-relaxed"
+                                                placeholder="使用 Markdown 语法书写笔记..."
+                                                value={editContent}
+                                                onChange={(e) => setEditContent(e.target.value)}
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="p-4 border-t border-white/40 bg-white/20 flex items-center justify-end shrink-0">
+                                    <div className="flex gap-3">
                                         <button
                                             onClick={handleSaveAsNote}
                                             disabled={saving || !editContent.trim()}
@@ -686,10 +770,10 @@ export default function KnowledgeBase() {
                                         >
                                             <Inbox size={16} /> 保存为草稿
                                         </button>
-                                    </>
-                                )}
+                                    </div>
+                                </div>
                             </div>
-                        </div>
+                        )}
                     </div>
                 </div>
             </div>
@@ -708,6 +792,18 @@ export default function KnowledgeBase() {
                 onConfirm={handleCreateFile}
                 parentFolder={createFileParentName}
             />
+
+            {/* 摇晃动画样式 */}
+            <style>{`
+                @keyframes shake {
+                    0%, 100% { transform: translateX(0); }
+                    10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
+                    20%, 40%, 60%, 80% { transform: translateX(4px); }
+                }
+                .animate-shake {
+                    animation: shake 0.5s ease-in-out;
+                }
+            `}</style>
         </div>
     );
 }

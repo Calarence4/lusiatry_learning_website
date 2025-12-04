@@ -46,6 +46,7 @@ export const tasksApi = {
     getAll: (params) => api.get('/tasks', { params }).then(handleResponse),
     getById: (id) => api.get(`/tasks/${id}`).then(handleResponse),
     getByDate: (date) => api.get(`/tasks/date/${date}`).then(handleResponse),
+    getMonthLogs: (year, month) => api.get(`/tasks/month/${year}/${month}`).then(handleResponse),
     create: (data) => api.post('/tasks', data).then(handleResponse),
     update: (id, data) => api.put(`/tasks/${id}`, data).then(handleResponse),
     delete: (id) => api.delete(`/tasks/${id}`).then(handleResponse),

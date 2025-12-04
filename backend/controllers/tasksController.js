@@ -311,3 +311,38 @@ exports.getTaskProgress = async (req, res, next) => {
         next(err);
     }
 };
+
+// 获取指定月份的完成日志
+exports.getMonthLogs = async (req, res, next) => {
+    try {
+        const { year, month } = req.params;
+        
+        // 构建月份起止日期（使用下个月1号来避免日期计算问题）
+        const monthNum = parseInt(month);
+        const yearNum = parseInt(year);
+        const startDate = `${year}-${month.padStart(2, '0')}-01`;
+        
+        // 计算下个月的第一天
+        let nextMonth, nextYear;
+        if (monthNum === 12) {
+            nextMonth = 1;
+            nextYear = yearNum + 1;
+        } else {
+            nextMonth = monthNum + 1;
+            nextYear = yearNum;
+        }
+        const endDate = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
+        
+        // 获取该月份所有完成和排除的日志（使用 >= startDate 和 < endDate）
+        const [logs] = await pool.query(
+            `SELECT task_id, log_date, is_completed, is_excluded 
+             FROM daily_task_logs 
+             WHERE log_date >= ? AND log_date < ?`,
+            [startDate, endDate]
+        );
+        
+        success(res, logs);
+    } catch (err) {
+        next(err);
+    }
+};

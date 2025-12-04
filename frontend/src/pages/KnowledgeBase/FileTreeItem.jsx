@@ -132,7 +132,7 @@ const FileTreeItem = memo(({
     // 键盘快捷键处理
     const handleKeyDown = useCallback((e) => {
         if (isRenaming) return; // 重命名中不处理快捷键
-        
+
         switch (e.key) {
             case 'F2': // 重命名
                 e.preventDefault();
@@ -199,9 +199,9 @@ const FileTreeItem = memo(({
         e.preventDefault();
         e.stopPropagation();
         setIsDragOver(false);
-        
+
         if (!isFolder) return;
-        
+
         try {
             const data = JSON.parse(e.dataTransfer.getData('text/plain'));
             if (data.id !== node.id) {
@@ -292,12 +292,12 @@ const FileTreeItem = memo(({
                             <>
                                 <button
                                     className="w-full px-3 py-1.5 text-left text-sm text-slate-600 hover:bg-slate-50 flex items-center gap-2"
-                                    onClick={() => { 
+                                    onClick={() => {
                                         const title = prompt(`在 "${node.title}" 中创建文件\n请输入文件名：`);
                                         if (title?.trim()) {
                                             onCreateFile?.(node.id, title.trim());
                                         }
-                                        setShowMenu(false); 
+                                        setShowMenu(false);
                                     }}
                                 >
                                     <FilePlus size={14} /> 新建文件

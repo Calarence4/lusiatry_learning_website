@@ -1,51 +1,93 @@
 import React, { useState, useEffect, memo, useMemo, useCallback } from 'react';
 import 'katex/dist/katex.min.css';
 
-// 处理双链语法 [[笔记名]]
-const processWikiLinks = (content, onLinkClick) => {
-    if (!content) return content;
-    
-    // 匹配 [[笔记名]] 语法
+// 双链组件 - 纯内联样式，只有颜色高亮
+const WikiLink = ({ name, exists, onClick }) => (
+    <span
+        onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onClick(name);
+        }}
+        className={`cursor-pointer font-medium hover:underline
+            ${exists ? 'text-indigo-600' : 'text-orange-500'}`}
+        title={exists ? `跳转到: ${name}` : `笔记不存在，点击创建: ${name}`}
+    >
+        [[{name}]]
+    </span>
+);
+
+// 处理文本中的双链，返回混合的文本和组件数组
+const processTextWithWikiLinks = (text, noteExists, onWikiLinkClick) => {
+    if (typeof text !== 'string') return text;
+
     const wikiLinkRegex = /\[\[([^\]]+)\]\]/g;
     const parts = [];
     let lastIndex = 0;
     let match;
-    
-    while ((match = wikiLinkRegex.exec(content)) !== null) {
+    let key = 0;
+
+    while ((match = wikiLinkRegex.exec(text)) !== null) {
         // 添加匹配前的普通文本
         if (match.index > lastIndex) {
-            parts.push(content.slice(lastIndex, match.index));
+            parts.push(text.slice(lastIndex, match.index));
         }
-        
-        // 添加双链标记（将在渲染时处理）
+
+        // 添加双链组件
         const noteName = match[1];
-        parts.push(`[[WIKILINK:${noteName}]]`);
+        parts.push(
+            <WikiLink
+                key={key++}
+                name={noteName}
+                exists={noteExists(noteName)}
+                onClick={onWikiLinkClick}
+            />
+        );
         lastIndex = match.index + match[0].length;
     }
-    
+
     // 添加剩余文本
-    if (lastIndex < content.length) {
-        parts.push(content.slice(lastIndex));
+    if (lastIndex < text.length) {
+        parts.push(text.slice(lastIndex));
     }
-    
-    return parts.join('');
+
+    return parts.length > 0 ? parts : text;
 };
 
-// 双链组件
-const WikiLink = ({ name, exists, onClick }) => (
-    <button
-        onClick={() => onClick(name)}
-        className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-sm font-medium transition-colors
-            ${exists 
-                ? 'text-indigo-600 bg-indigo-50 hover:bg-indigo-100' 
-                : 'text-red-500 bg-red-50 hover:bg-red-100'}`}
-        title={exists ? `跳转到: ${name}` : `创建笔记: ${name}`}
-    >
-        <span className="text-xs opacity-60">[[</span>
-        {name}
-        <span className="text-xs opacity-60">]]</span>
-    </button>
-);
+// 递归处理 children 中的双链
+const processChildren = (children, noteExists, onWikiLinkClick) => {
+    if (!children) return children;
+
+    if (typeof children === 'string') {
+        return processTextWithWikiLinks(children, noteExists, onWikiLinkClick);
+    }
+
+    if (Array.isArray(children)) {
+        return children.map((child, index) => {
+            if (typeof child === 'string') {
+                const processed = processTextWithWikiLinks(child, noteExists, onWikiLinkClick);
+                return Array.isArray(processed) ?
+                    processed.map((p, i) => typeof p === 'string' ? p : React.cloneElement(p, { key: `${index}-${i}` })) :
+                    processed;
+            }
+            if (React.isValidElement(child)) {
+                return React.cloneElement(child, {
+                    key: index,
+                    children: processChildren(child.props.children, noteExists, onWikiLinkClick)
+                });
+            }
+            return child;
+        }).flat();
+    }
+
+    if (React.isValidElement(children)) {
+        return React.cloneElement(children, {
+            children: processChildren(children.props.children, noteExists, onWikiLinkClick)
+        });
+    }
+
+    return children;
+};
 
 // 懒加载 Markdown 预览组件
 const MarkdownPreview = memo(({ content, existingNotes = [], onWikiLinkClick }) => {
@@ -80,17 +122,19 @@ const MarkdownPreview = memo(({ content, existingNotes = [], onWikiLinkClick }) 
 
     // 检查笔记是否存在
     const noteExists = useCallback((name) => {
-        return existingNotes.some(note => 
+        return existingNotes.some(note =>
             note.title?.toLowerCase() === name.toLowerCase()
         );
     }, [existingNotes]);
 
-    // 处理内容中的双链
-    const processedContent = useMemo(() => {
-        if (!content) return '';
-        // 将 [[笔记名]] 转换为特殊标记，稍后在渲染时替换
-        return content.replace(/\[\[([^\]]+)\]\]/g, '`[[WIKILINK:$1]]`');
-    }, [content]);
+    // 创建带双链处理的段落组件
+    const createComponentWithWikiLinks = useCallback((Component, className) => {
+        return ({ children, ...props }) => (
+            <Component className={className} {...props}>
+                {processChildren(children, noteExists, handleWikiLinkClick)}
+            </Component>
+        );
+    }, [noteExists, handleWikiLinkClick]);
 
     if (loading) {
         return (
@@ -120,30 +164,38 @@ const MarkdownPreview = memo(({ content, existingNotes = [], onWikiLinkClick }) 
     }
 
     return (
-        <ReactMarkdown 
+        <ReactMarkdown
             remarkPlugins={[remarkGfm, remarkMath]}
             rehypePlugins={[rehypeKatex]}
             components={{
-                // 自定义标题样式
-                h1: ({ children }) => <h1 className="text-2xl font-bold text-slate-800 mb-4 pb-2 border-b border-slate-200">{children}</h1>,
-                h2: ({ children }) => <h2 className="text-xl font-bold text-slate-700 mb-3 mt-6">{children}</h2>,
-                h3: ({ children }) => <h3 className="text-lg font-semibold text-slate-700 mb-2 mt-4">{children}</h3>,
-                // 代码块样式 - 处理双链
+                // 段落 - 处理双链
+                p: ({ children }) => (
+                    <p className="my-2">
+                        {processChildren(children, noteExists, handleWikiLinkClick)}
+                    </p>
+                ),
+                // 自定义标题样式 - 处理双链
+                h1: ({ children }) => (
+                    <h1 className="text-2xl font-bold text-slate-800 mb-4 pb-2 border-b border-slate-200">
+                        {processChildren(children, noteExists, handleWikiLinkClick)}
+                    </h1>
+                ),
+                h2: ({ children }) => (
+                    <h2 className="text-xl font-bold text-slate-700 mb-3 mt-6">
+                        {processChildren(children, noteExists, handleWikiLinkClick)}
+                    </h2>
+                ),
+                h3: ({ children }) => (
+                    <h3 className="text-lg font-semibold text-slate-700 mb-2 mt-4">
+                        {processChildren(children, noteExists, handleWikiLinkClick)}
+                    </h3>
+                ),
+                // 列表项 - 处理双链
+                li: ({ children }) => (
+                    <li>{processChildren(children, noteExists, handleWikiLinkClick)}</li>
+                ),
+                // 代码块样式
                 code: ({ inline, className, children, ...props }) => {
-                    const text = String(children).replace(/\n$/, '');
-                    
-                    // 检查是否是双链标记
-                    if (inline && text.startsWith('[[WIKILINK:') && text.endsWith(']]')) {
-                        const noteName = text.slice(11, -2);
-                        return (
-                            <WikiLink 
-                                name={noteName} 
-                                exists={noteExists(noteName)} 
-                                onClick={handleWikiLinkClick} 
-                            />
-                        );
-                    }
-                    
                     if (inline) {
                         return <code className="px-1.5 py-0.5 bg-slate-100 text-indigo-600 rounded text-sm font-mono" {...props}>{children}</code>;
                     }
@@ -162,10 +214,10 @@ const MarkdownPreview = memo(({ content, existingNotes = [], onWikiLinkClick }) 
                 // 列表样式
                 ul: ({ children }) => <ul className="list-disc list-inside space-y-1 my-2">{children}</ul>,
                 ol: ({ children }) => <ol className="list-decimal list-inside space-y-1 my-2">{children}</ol>,
-                // 引用样式
+                // 引用样式 - 处理双链
                 blockquote: ({ children }) => (
                     <blockquote className="border-l-4 border-indigo-300 pl-4 py-1 my-4 text-slate-600 italic bg-indigo-50/50 rounded-r">
-                        {children}
+                        {processChildren(children, noteExists, handleWikiLinkClick)}
                     </blockquote>
                 ),
                 // 表格样式
@@ -175,7 +227,11 @@ const MarkdownPreview = memo(({ content, existingNotes = [], onWikiLinkClick }) 
                     </div>
                 ),
                 th: ({ children }) => <th className="px-4 py-2 bg-slate-100 text-left text-sm font-semibold text-slate-700 border-b border-slate-200">{children}</th>,
-                td: ({ children }) => <td className="px-4 py-2 text-sm text-slate-600 border-b border-slate-100">{children}</td>,
+                td: ({ children }) => (
+                    <td className="px-4 py-2 text-sm text-slate-600 border-b border-slate-100">
+                        {processChildren(children, noteExists, handleWikiLinkClick)}
+                    </td>
+                ),
             }}
         >
             {content}
