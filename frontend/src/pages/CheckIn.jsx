@@ -46,7 +46,7 @@ export default function CheckIn() {
                 setLoading(true);
                 const year = format(selectedDate, 'yyyy');
                 const month = format(selectedDate, 'M');
-                
+
                 const [subjectsData, tasksData, monthLogs] = await Promise.all([
                     subjectsApi.getAll(),
                     tasksApi.getAll(),
@@ -54,7 +54,7 @@ export default function CheckIn() {
                 ]);
                 setSubjects(subjectsData || []);
                 setAllTasks(tasksData || []);
-                
+
                 // 构建完成状态和排除状态
                 const completedLogs = {};
                 const excludedLogs = {};
@@ -90,13 +90,13 @@ export default function CheckIn() {
     useEffect(() => {
         // 跳过初始月份（已在 fetchInitialData 中加载）
         if (currentMonth === initialMonth) return;
-        
+
         async function fetchMonthLogs() {
             try {
                 const year = format(selectedDate, 'yyyy');
                 const month = format(selectedDate, 'M');
                 const logs = await tasksApi.getMonthLogs(year, month);
-                
+
                 // 构建完成状态和排除状态
                 const completedLogs = {};
                 const excludedLogs = {};
@@ -111,7 +111,7 @@ export default function CheckIn() {
                         excludedLogs[key] = true;
                     }
                 });
-                
+
                 setCompletedLog(prev => ({ ...prev, ...completedLogs }));
                 setExceptionLog(prev => ({ ...prev, ...excludedLogs }));
             } catch (err) {
@@ -161,7 +161,7 @@ export default function CheckIn() {
     const monthStart = startOfMonth(selectedDate);
     const monthEnd = endOfMonth(selectedDate);
     const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
-    
+
     // 计算月初第一天是星期几 (0=周日, 1=周一, ...)
     const firstDayOfWeek = getDay(monthStart);
     // 生成前置空白占位
@@ -445,7 +445,7 @@ export default function CheckIn() {
                                     deadlineDate.setHours(parseInt(hours), parseInt(minutes), 0);
                                     isOverdue = now > deadlineDate;
                                 }
-                                
+
                                 return (
                                     <div
                                         key={task.id}

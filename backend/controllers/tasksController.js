@@ -5,7 +5,7 @@ const { success, error } = require('../utils/response');
 exports.getAllTasks = async (req, res, next) => {
     try {
         const { page, limit } = req.query;
-        
+
         // 分页参数
         const pageNum = parseInt(page) || 1;
         const pageSize = parseInt(limit) || 100;  // 默认100条
@@ -22,14 +22,14 @@ exports.getAllTasks = async (req, res, next) => {
         // 获取数据
         let query = 'SELECT * FROM daily_tasks ORDER BY id DESC';
         const params = [];
-        
+
         if (isPaginated) {
             query += ' LIMIT ? OFFSET ?';
             params.push(pageSize, offset);
         }
 
         const [rows] = await pool.query(query, params);
-        
+
         if (isPaginated) {
             success(res, {
                 list: rows,
@@ -176,11 +176,11 @@ exports.toggleTask = async (req, res, next) => {
             'SELECT * FROM daily_tasks WHERE id = ?',
             [id]
         );
-        
+
         if (taskRows.length === 0) {
             return error(res, '任务不存在', 404);
         }
-        
+
         const task = taskRows[0];
 
         // 查询现有记录
@@ -316,12 +316,12 @@ exports.getTaskProgress = async (req, res, next) => {
 exports.getMonthLogs = async (req, res, next) => {
     try {
         const { year, month } = req.params;
-        
+
         // 构建月份起止日期（使用下个月1号来避免日期计算问题）
         const monthNum = parseInt(month);
         const yearNum = parseInt(year);
         const startDate = `${year}-${month.padStart(2, '0')}-01`;
-        
+
         // 计算下个月的第一天
         let nextMonth, nextYear;
         if (monthNum === 12) {
@@ -332,7 +332,7 @@ exports.getMonthLogs = async (req, res, next) => {
             nextYear = yearNum;
         }
         const endDate = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
-        
+
         // 获取该月份所有完成和排除的日志（使用 >= startDate 和 < endDate）
         const [logs] = await pool.query(
             `SELECT task_id, log_date, is_completed, is_excluded 
@@ -340,7 +340,7 @@ exports.getMonthLogs = async (req, res, next) => {
              WHERE log_date >= ? AND log_date < ?`,
             [startDate, endDate]
         );
-        
+
         success(res, logs);
     } catch (err) {
         next(err);
