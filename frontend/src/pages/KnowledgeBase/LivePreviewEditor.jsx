@@ -23,27 +23,43 @@ const renderKaTeX = (formula, displayMode = false) => {
     }
 };
 
-// 数学公式预览 Widget - 在公式后面显示渲染结果
+// 数学公式预览 Widget - 在公式后面显示渲染结果，可点击进入编辑
 class MathPreviewWidget extends WidgetType {
-    constructor(html, isBlock = false) {
+    constructor(html, isBlock = false, sourceStart = 0, sourceEnd = 0) {
         super();
         this.html = html;
         this.isBlock = isBlock;
+        this.sourceStart = sourceStart;
+        this.sourceEnd = sourceEnd;
     }
 
-    toDOM() {
+    toDOM(view) {
         const wrapper = document.createElement(this.isBlock ? 'div' : 'span');
         wrapper.className = this.isBlock ? 'cm-math-preview-block' : 'cm-math-preview-inline';
         wrapper.innerHTML = this.html;
+        wrapper.style.cursor = 'pointer';
+
+        // 点击预览区域时，将光标移动到源码位置
+        wrapper.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            // 将光标定位到源码开始位置
+            view.dispatch({
+                selection: { anchor: this.sourceStart + 1 } // +1 跳过开头的 $
+            });
+            view.focus();
+        });
+
         return wrapper;
     }
 
     eq(other) {
-        return this.html === other.html && this.isBlock === other.isBlock;
+        return this.html === other.html && this.isBlock === other.isBlock &&
+            this.sourceStart === other.sourceStart && this.sourceEnd === other.sourceEnd;
     }
 
     ignoreEvent() {
-        return true;
+        return false; // 允许处理事件
     }
 }
 
@@ -65,34 +81,42 @@ const createLivePreviewPlugin = () => {
         buildDecorations(view) {
             const decorations = [];
             const doc = view.state.doc.toString();
-            const cursorPos = view.state.selection.main.head;
+            const { from: selFrom, to: selTo } = view.state.selection.main;
             let match;
 
-            // 处理块级数学公式 $$...$$ (支持多行) - 在公式结束后添加预览
+            // 处理块级数学公式 $$...$$ (支持多行)
             const blockMathRegex = /\$\$([\s\S]+?)\$\$/g;
             while ((match = blockMathRegex.exec(doc)) !== null) {
                 const start = match.index;
                 const end = start + match[0].length;
                 const formula = match[1].trim();
 
-                // 添加源码的样式标记
-                decorations.push(
-                    Decoration.mark({ class: 'cm-md-block-math' }).range(start, end)
-                );
+                // 检查光标是否在公式范围内（含边界）
+                const cursorInRange = selFrom >= start && selTo <= end;
 
-                // 在公式结束位置添加渲染预览 widget
-                const rendered = renderKaTeX(formula, true);
-                if (rendered) {
+                if (cursorInRange) {
+                    // 光标在公式内：显示源码（可编辑），添加编辑样式
                     decorations.push(
-                        Decoration.widget({
-                            widget: new MathPreviewWidget(rendered, true),
-                            side: 1 // 在文本后面
-                        }).range(end)
+                        Decoration.mark({ class: 'cm-md-block-math-editing' }).range(start, end)
                     );
+                } else {
+                    // 光标不在公式内：隐藏源码，显示渲染预览
+                    decorations.push(
+                        Decoration.mark({ class: 'cm-md-block-math' }).range(start, end)
+                    );
+                    const rendered = renderKaTeX(formula, true);
+                    if (rendered) {
+                        decorations.push(
+                            Decoration.widget({
+                                widget: new MathPreviewWidget(rendered, true, start, end),
+                                side: 1
+                            }).range(end)
+                        );
+                    }
                 }
             }
 
-            // 处理行内数学公式 $formula$ - 在公式后添加预览
+            // 处理行内数学公式 $formula$
             const inlineMathRegex = /(?<!\$)\$([^$\n]+)\$(?!\$)/g;
             while ((match = inlineMathRegex.exec(doc)) !== null) {
                 const start = match.index;
@@ -103,20 +127,28 @@ const createLivePreviewPlugin = () => {
                 const isInBlockMath = doc.substring(0, start).split('$$').length % 2 === 0;
                 if (isInBlockMath) continue;
 
-                // 添加源码样式
-                decorations.push(
-                    Decoration.mark({ class: 'cm-md-math' }).range(start, end)
-                );
+                // 检查光标是否在公式范围内（含边界）
+                const cursorInRange = selFrom >= start && selTo <= end;
 
-                // 在公式后添加渲染预览
-                const rendered = renderKaTeX(formula, false);
-                if (rendered) {
+                if (cursorInRange) {
+                    // 光标在公式内：显示源码（可编辑），添加编辑样式
                     decorations.push(
-                        Decoration.widget({
-                            widget: new MathPreviewWidget(rendered, false),
-                            side: 1
-                        }).range(end)
+                        Decoration.mark({ class: 'cm-md-math-editing' }).range(start, end)
                     );
+                } else {
+                    // 光标不在公式内：隐藏源码，显示渲染预览
+                    decorations.push(
+                        Decoration.mark({ class: 'cm-md-math' }).range(start, end)
+                    );
+                    const rendered = renderKaTeX(formula, false);
+                    if (rendered) {
+                        decorations.push(
+                            Decoration.widget({
+                                widget: new MathPreviewWidget(rendered, false, start, end),
+                                side: 1
+                            }).range(end)
+                        );
+                    }
                 }
             }
 
@@ -243,6 +275,14 @@ const editorTheme = EditorView.theme({
         overflow: 'hidden',
         display: 'inline-block'
     },
+    '.cm-md-math-editing': {
+        fontFamily: 'ui-monospace, monospace',
+        fontSize: '0.9em',
+        color: '#6366f1',
+        backgroundColor: '#eef2ff',
+        padding: '1px 4px',
+        borderRadius: '3px'
+    },
     '.cm-md-block-math': {
         fontFamily: 'ui-monospace, monospace',
         fontSize: '0',
@@ -251,6 +291,16 @@ const editorTheme = EditorView.theme({
         display: 'block',
         height: '0',
         overflow: 'hidden'
+    },
+    '.cm-md-block-math-editing': {
+        fontFamily: 'ui-monospace, monospace',
+        fontSize: '0.9em',
+        color: '#6366f1',
+        backgroundColor: '#eef2ff',
+        padding: '8px 12px',
+        borderRadius: '6px',
+        display: 'block',
+        margin: '8px 0'
     },
     '.cm-md-wikilink': {
         color: '#4f46e5',
@@ -316,15 +366,64 @@ const LivePreviewEditor = forwardRef(({
         });
     }, []);
 
-    // 提供插入文本的方法
-    const insertText = useCallback((prefix, suffix = '', placeholder = '') => {
+    // 提供插入文本的方法（支持toggle模式）
+    const insertText = useCallback((prefix, suffix = '', placeholder = '', toggle = false) => {
         if (!viewRef.current) return;
 
         const view = viewRef.current;
         const { from, to } = view.state.selection.main;
         const selectedText = view.state.sliceDoc(from, to);
-        const textToInsert = selectedText || placeholder;
 
+        // Toggle模式：检查是否已经有该格式
+        if (toggle && selectedText.length > 0) {
+            // 检查选中文本是否被前缀和后缀包围
+            const prefixLen = prefix.length;
+            const suffixLen = suffix.length;
+
+            if (selectedText.startsWith(prefix) && selectedText.endsWith(suffix)) {
+                // 已有格式，移除格式
+                const innerText = selectedText.slice(prefixLen, selectedText.length - suffixLen);
+                view.dispatch({
+                    changes: {
+                        from,
+                        to,
+                        insert: innerText
+                    },
+                    selection: {
+                        anchor: from,
+                        head: from + innerText.length
+                    }
+                });
+                view.focus();
+                return;
+            }
+
+            // 检查选区外部是否有格式标记（用户可能只选中了内部文字）
+            const docLength = view.state.doc.length;
+            const extendedFrom = Math.max(0, from - prefixLen);
+            const extendedTo = Math.min(docLength, to + suffixLen);
+            const extendedText = view.state.sliceDoc(extendedFrom, extendedTo);
+
+            if (extendedText.startsWith(prefix) && extendedText.endsWith(suffix)) {
+                // 选区外部有格式标记，移除整个格式
+                view.dispatch({
+                    changes: {
+                        from: extendedFrom,
+                        to: extendedTo,
+                        insert: selectedText
+                    },
+                    selection: {
+                        anchor: extendedFrom,
+                        head: extendedFrom + selectedText.length
+                    }
+                });
+                view.focus();
+                return;
+            }
+        }
+
+        // 添加格式
+        const textToInsert = selectedText || placeholder;
         view.dispatch({
             changes: {
                 from,
@@ -340,10 +439,19 @@ const LivePreviewEditor = forwardRef(({
         view.focus();
     }, []);
 
+    // 获取当前选中的文本
+    const getSelection = useCallback(() => {
+        if (!viewRef.current) return '';
+        const view = viewRef.current;
+        const { from, to } = view.state.selection.main;
+        return view.state.sliceDoc(from, to);
+    }, []);
+
     // 暴露方法给父组件
     useImperativeHandle(ref, () => ({
-        insertText
-    }), [insertText]);
+        insertText,
+        getSelection
+    }), [insertText, getSelection]);
 
     // 创建编辑器
     useEffect(() => {

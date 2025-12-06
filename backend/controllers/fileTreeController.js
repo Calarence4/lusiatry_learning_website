@@ -199,6 +199,136 @@ exports.delete = async (req, res, next) => {
     }
 };
 
+// 批量导入笔记
+exports.batchImport = async (req, res, next) => {
+    try {
+        const { items, targetFolderId } = req.body;
+
+        if (!items || !Array.isArray(items) || items.length === 0) {
+            return error(res, '导入数据不能为空', 400);
+        }
+
+        // 限制单次导入数量
+        if (items.length > 500) {
+            return error(res, '单次最多导入500个文件', 400);
+        }
+
+        const results = {
+            success: 0,
+            failed: 0,
+            errors: [],
+            imported: []
+        };
+
+        // 用于存储路径到ID的映射（处理文件夹层级）
+        const pathToIdMap = new Map();
+
+        // 如果指定了目标文件夹，先验证其存在
+        if (targetFolderId) {
+            const [folder] = await pool.query(
+                'SELECT id, type FROM file_tree WHERE id = ?',
+                [targetFolderId]
+            );
+            if (folder.length === 0 || folder[0].type !== 'folder') {
+                return error(res, '目标文件夹不存在', 400);
+            }
+            pathToIdMap.set('', targetFolderId);
+        }
+
+        // 按路径深度排序，确保父文件夹先创建
+        const sortedItems = [...items].sort((a, b) => {
+            const depthA = (a.path || '').split('/').filter(Boolean).length;
+            const depthB = (b.path || '').split('/').filter(Boolean).length;
+            return depthA - depthB;
+        });
+
+        // 开始事务
+        const connection = await pool.getConnection();
+        await connection.beginTransaction();
+
+        try {
+            for (const item of sortedItems) {
+                try {
+                    const { title, content, type, path } = item;
+
+                    if (!title) {
+                        results.failed++;
+                        results.errors.push({ title: item.title || '未知', error: '标题为空' });
+                        continue;
+                    }
+
+                    // 确定父文件夹ID
+                    let parentId = targetFolderId || null;
+
+                    if (path) {
+                        const pathParts = path.split('/').filter(Boolean);
+                        let currentPath = '';
+
+                        // 创建路径中的文件夹
+                        for (const folderName of pathParts) {
+                            const parentPath = currentPath;
+                            currentPath = currentPath ? `${currentPath}/${folderName}` : folderName;
+
+                            if (!pathToIdMap.has(currentPath)) {
+                                // 检查该文件夹是否已存在
+                                const existingParentId = pathToIdMap.get(parentPath) || targetFolderId || null;
+                                const [existing] = await connection.query(
+                                    'SELECT id FROM file_tree WHERE title = ? AND type = ? AND parent_id <=> ?',
+                                    [folderName, 'folder', existingParentId]
+                                );
+
+                                if (existing.length > 0) {
+                                    pathToIdMap.set(currentPath, existing[0].id);
+                                } else {
+                                    // 创建文件夹
+                                    const [result] = await connection.query(
+                                        `INSERT INTO file_tree (title, type, parent_id, is_subject, is_system, content)
+                                         VALUES (?, 'folder', ?, 0, 0, NULL)`,
+                                        [folderName, existingParentId]
+                                    );
+                                    pathToIdMap.set(currentPath, result.insertId);
+                                }
+                            }
+                            parentId = pathToIdMap.get(currentPath);
+                        }
+                    }
+
+                    // 创建文件或文件夹
+                    const itemType = type || 'file';
+                    const [result] = await connection.query(
+                        `INSERT INTO file_tree (title, type, parent_id, is_subject, is_system, content)
+                         VALUES (?, ?, ?, 0, 0, ?)`,
+                        [title, itemType, parentId, itemType === 'file' ? (content || '') : null]
+                    );
+
+                    results.success++;
+                    results.imported.push({
+                        id: result.insertId,
+                        title,
+                        type: itemType,
+                        path: path || ''
+                    });
+                } catch (itemErr) {
+                    results.failed++;
+                    results.errors.push({ title: item.title || '未知', error: itemErr.message });
+                }
+            }
+
+            await connection.commit();
+        } catch (txErr) {
+            await connection.rollback();
+            throw txErr;
+        } finally {
+            connection.release();
+        }
+
+        success(res, results, 201);
+    } catch (err) {
+        console.error('batchImport error:', err);
+        next(err);
+    }
+};
+
 // 确保系统草稿箱存在
 exports.ensureDraftBox = async (req, res, next) => {
     try {
@@ -257,7 +387,7 @@ exports.getTodayCount = async (req, res, next) => {
             WHERE type = 'file' 
             AND DATE(created_at) = CURDATE()
         `;
-        
+
         if (excludeIds.length > 0) {
             query += ` AND id NOT IN (${excludeIds.join(',')}) AND (parent_id IS NULL OR parent_id NOT IN (${excludeIds.join(',')}))`;
         }

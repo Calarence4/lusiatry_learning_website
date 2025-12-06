@@ -1,4 +1,4 @@
-import React, { memo } from 'react';
+import React, { memo, useState, useCallback } from 'react';
 import {
     Bold, Italic, Strikethrough, Code, Link, Image,
     List, ListOrdered, CheckSquare, Quote, Minus,
@@ -7,12 +7,14 @@ import {
 } from 'lucide-react';
 
 // 工具栏按钮组件
-const ToolbarButton = memo(({ icon: Icon, title, onClick, isActive, disabled }) => (
+const ToolbarButton = memo(({ icon: Icon, title, onClick, isActive, disabled, isWarning }) => (
     <button
         onClick={onClick}
         title={title}
         disabled={disabled}
-        className={`p-1.5 rounded-md transition-colors ${isActive
+        className={`p-1.5 rounded-md transition-colors ${isWarning
+            ? 'text-red-500 animate-shake'
+            : isActive
                 ? 'bg-indigo-100 text-indigo-600'
                 : disabled
                     ? 'text-slate-300 cursor-not-allowed'
@@ -48,8 +50,8 @@ const DropdownButton = memo(({ icon: Icon, title, items, onSelect }) => {
                 onClick={() => setIsOpen(!isOpen)}
                 title={title}
                 className={`p-1.5 rounded-md transition-colors ${isOpen
-                        ? 'bg-indigo-100 text-indigo-600'
-                        : 'hover:bg-slate-100 text-slate-500 hover:text-slate-700'
+                    ? 'bg-indigo-100 text-indigo-600'
+                    : 'hover:bg-slate-100 text-slate-500 hover:text-slate-700'
                     }`}
             >
                 <Icon size={16} />
@@ -80,8 +82,31 @@ const EditorToolbar = memo(({
     editMode,
     onEditModeChange,
     onInsert,
+    getSelection, // 新增：获取当前选中文本的方法
     className = ''
 }) => {
+    // 警告状态，记录哪个按钮正在显示警告
+    const [warningIndex, setWarningIndex] = useState(null);
+
+    // 清除警告状态
+    const clearWarning = useCallback(() => {
+        setWarningIndex(null);
+    }, []);
+
+    // 处理需要选中文字的工具点击（支持toggle取消格式）
+    const handleWrapInsert = useCallback((index, prefix, suffix, placeholder) => {
+        // 检查是否有选中的文字
+        const selection = getSelection?.();
+        if (!selection || selection.length === 0) {
+            // 没有选中文字，显示警告动画
+            setWarningIndex(index);
+            setTimeout(clearWarning, 500); // 500ms后清除警告
+            return;
+        }
+        // 有选中文字，执行插入（启用toggle模式）
+        onInsert?.(prefix, suffix, placeholder, true);
+    }, [getSelection, onInsert, clearWarning]);
+
     // 标题下拉菜单项
     const headingItems = [
         { label: '一级标题', value: 'h1', icon: Heading1 },
@@ -98,6 +123,24 @@ const EditorToolbar = memo(({
         onInsert?.(levels[value], '', '标题');
     };
 
+    // 列表下拉菜单项
+    const listItems = [
+        { label: '无序列表', value: 'ul', icon: List },
+        { label: '有序列表', value: 'ol', icon: ListOrdered },
+        { label: '任务列表', value: 'task', icon: CheckSquare },
+    ];
+
+    // 处理列表插入
+    const handleListSelect = (value) => {
+        const formats = {
+            ul: ['- ', '', '列表项'],
+            ol: ['1. ', '', '列表项'],
+            task: ['- [ ] ', '', '任务项']
+        };
+        const [prefix, suffix, placeholder] = formats[value];
+        onInsert?.(prefix, suffix, placeholder);
+    };
+
     // 工具栏配置
     const toolbarGroups = [
         // 标题
@@ -109,23 +152,31 @@ const EditorToolbar = memo(({
             onSelect: handleHeadingSelect
         },
         'divider',
-        // 文本格式
-        { icon: Bold, title: '粗体 (Ctrl+B)', onClick: () => onInsert?.('**', '**', '粗体文字') },
-        { icon: Italic, title: '斜体 (Ctrl+I)', onClick: () => onInsert?.('*', '*', '斜体文字') },
-        { icon: Strikethrough, title: '删除线', onClick: () => onInsert?.('~~', '~~', '删除线文字') },
+        // 文本格式（需要选中文字）
+        { icon: Bold, title: '粗体 (Ctrl+B)', needsSelection: true, prefix: '**', suffix: '**', placeholder: '粗体文字' },
+        { icon: Italic, title: '斜体 (Ctrl+I)', needsSelection: true, prefix: '*', suffix: '*', placeholder: '斜体文字' },
+        { icon: Strikethrough, title: '删除线', needsSelection: true, prefix: '~~', suffix: '~~', placeholder: '删除线文字' },
         'divider',
-        // 代码
+        // 代码（不需要选中文字）
         { icon: Code, title: '行内代码', onClick: () => onInsert?.('`', '`', 'code') },
         { icon: FileCode, title: '代码块', onClick: () => onInsert?.('```\n', '\n```', '// 代码') },
         'divider',
-        // 链接和图片
-        { icon: Link, title: '链接', onClick: () => onInsert?.('[', '](url)', '链接文字') },
-        { icon: Image, title: '图片', onClick: () => onInsert?.('![', '](url)', '图片描述') },
+        // LaTeX 公式
+        { type: 'text', text: '$', title: 'LaTeX 行内公式', onClick: () => onInsert?.('$', '$', 'formula') },
+        { type: 'text', text: '$$', title: 'LaTeX 行间公式', onClick: () => onInsert?.('$$\n', '\n$$', 'formula') },
         'divider',
-        // 列表
-        { icon: List, title: '无序列表', onClick: () => onInsert?.('- ', '', '列表项') },
-        { icon: ListOrdered, title: '有序列表', onClick: () => onInsert?.('1. ', '', '列表项') },
-        { icon: CheckSquare, title: '任务列表', onClick: () => onInsert?.('- [ ] ', '', '任务项') },
+        // 链接和图片（需要选中文字）
+        { icon: Link, title: '链接', needsSelection: true, prefix: '[', suffix: '](url)', placeholder: '链接文字' },
+        { icon: Image, title: '图片', needsSelection: true, prefix: '![', suffix: '](url)', placeholder: '图片描述' },
+        'divider',
+        // 列表（下拉菜单）
+        {
+            type: 'dropdown',
+            icon: List,
+            title: '列表',
+            items: listItems,
+            onSelect: handleListSelect
+        },
         'divider',
         // 引用和分割线
         { icon: Quote, title: '引用', onClick: () => onInsert?.('> ', '', '引用内容') },
@@ -160,6 +211,31 @@ const EditorToolbar = memo(({
                             />
                         );
                     }
+                    // 文本类型按钮（如 $ 和 $$）
+                    if (item.type === 'text') {
+                        return (
+                            <button
+                                key={index}
+                                onClick={item.onClick}
+                                title={item.title}
+                                className="px-1.5 py-1 rounded-md transition-colors hover:bg-slate-100 text-slate-500 hover:text-slate-700 text-sm font-mono font-semibold min-w-[28px]"
+                            >
+                                {item.text}
+                            </button>
+                        );
+                    }
+                    // 需要选中文字的工具
+                    if (item.needsSelection) {
+                        return (
+                            <ToolbarButton
+                                key={index}
+                                icon={item.icon}
+                                title={item.title}
+                                onClick={() => handleWrapInsert(index, item.prefix, item.suffix, item.placeholder)}
+                                isWarning={warningIndex === index}
+                            />
+                        );
+                    }
                     return (
                         <ToolbarButton
                             key={index}
@@ -177,8 +253,8 @@ const EditorToolbar = memo(({
                     onClick={() => onEditModeChange?.('live')}
                     title="阅览模式 - 实时预览"
                     className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${editMode === 'live'
-                            ? 'bg-indigo-500 text-white'
-                            : 'text-slate-500 hover:bg-slate-100'
+                        ? 'bg-indigo-500 text-white'
+                        : 'text-slate-500 hover:bg-slate-100'
                         }`}
                 >
                     <Eye size={14} />
@@ -188,8 +264,8 @@ const EditorToolbar = memo(({
                     onClick={() => onEditModeChange?.('source')}
                     title="源代码模式 - 纯文本编辑"
                     className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${editMode === 'source'
-                            ? 'bg-slate-700 text-white'
-                            : 'text-slate-500 hover:bg-slate-100'
+                        ? 'bg-slate-700 text-white'
+                        : 'text-slate-500 hover:bg-slate-100'
                         }`}
                 >
                     <Code2 size={14} />

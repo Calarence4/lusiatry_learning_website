@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useSearchParams, Link } from 'react-router-dom';
 import {
     ArrowLeft, Search, FolderPlus, Save, Inbox, Plus, FilePlus,
-    BookOpen, Link2, Pencil, FileText
+    BookOpen, Link2, Pencil, FileText, Upload, ChevronDown, ChevronRight, FolderOpen
 } from 'lucide-react';
 import { fileTreeApi } from '../../api';
 import { useToast } from '../../components/Toast';
@@ -13,6 +13,7 @@ import MarkdownPreview from './MarkdownPreview';
 import LivePreviewEditor from './LivePreviewEditor';
 import EditorToolbar from './EditorToolbar';
 import { CreateFolderModal, CreateFileModal } from './Modals';
+import ImportModal from './ImportModal';
 
 // 主组件
 export default function KnowledgeBase() {
@@ -39,9 +40,13 @@ export default function KnowledgeBase() {
     // 编辑器引用
     const editorRef = useRef(null);
 
+    // 笔记根文件夹展开状态
+    const [notesExpanded, setNotesExpanded] = useState(true);
+
     // 模态框状态
     const [showCreateFolderModal, setShowCreateFolderModal] = useState(false);
     const [showCreateFileModal, setShowCreateFileModal] = useState(false);
+    const [showImportModal, setShowImportModal] = useState(false);
     const [createFileParentId, setCreateFileParentId] = useState(null);
     const [createFileParentName, setCreateFileParentName] = useState('');
 
@@ -326,9 +331,16 @@ export default function KnowledgeBase() {
         setEditMode('live');
     }, [setSearchParams]);
 
-    // 搜索过滤
-    const displayTree = useMemo(() => {
-        if (!debouncedSearch) return fileTree;
+    // 搜索过滤，分离草稿箱和普通笔记
+    const { draftBox, notesTree } = useMemo(() => {
+        // 找出草稿箱
+        const draft = fileTree.find(node => node.id === draftBoxId);
+        // 其他笔记（不含草稿箱）
+        const notes = fileTree.filter(node => node.id !== draftBoxId);
+
+        if (!debouncedSearch) {
+            return { draftBox: draft, notesTree: notes };
+        }
 
         const filterTree = (nodes) => {
             return nodes.filter(node => {
@@ -341,8 +353,14 @@ export default function KnowledgeBase() {
             }));
         };
 
-        return filterTree(fileTree);
-    }, [fileTree, debouncedSearch]);
+        return {
+            draftBox: draft ? (draft.title.toLowerCase().includes(debouncedSearch.toLowerCase()) || (draft.children?.length > 0 && filterTree(draft.children).length > 0) ? { ...draft, children: draft.children ? filterTree(draft.children) : undefined } : null) : null,
+            notesTree: filterTree(notes)
+        };
+    }, [fileTree, debouncedSearch, draftBoxId]);
+
+    // 兼容旧代码，保持 displayTree 引用
+    const displayTree = notesTree;
 
     // toast 回调
     const handleToast = useCallback((type, message) => {
@@ -407,11 +425,19 @@ export default function KnowledgeBase() {
         }
     }, [allNotes, setSearchParams, fetchFileTree, toast]);
 
-    // 工具栏插入文本
-    const handleToolbarInsert = useCallback((prefix, suffix, placeholder) => {
+    // 工具栏插入文本（支持toggle模式）
+    const handleToolbarInsert = useCallback((prefix, suffix, placeholder, toggle = false) => {
         if (editorRef.current?.insertText) {
-            editorRef.current.insertText(prefix, suffix, placeholder);
+            editorRef.current.insertText(prefix, suffix, placeholder, toggle);
         }
+    }, []);
+
+    // 获取编辑器当前选中的文本
+    const handleGetSelection = useCallback(() => {
+        if (editorRef.current?.getSelection) {
+            return editorRef.current.getSelection();
+        }
+        return '';
     }, []);
 
     if (loading) {
@@ -458,6 +484,12 @@ export default function KnowledgeBase() {
 
                 {/* 快捷操作 */}
                 <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => setShowImportModal(true)}
+                        className="flex items-center gap-1.5 px-3 py-2 bg-white/60 hover:bg-white/80 backdrop-blur-md border border-white/60 rounded-xl text-sm text-slate-600 transition-colors shadow-sm"
+                    >
+                        <Upload size={16} /> 导入笔记
+                    </button>
                     <button
                         onClick={handleNewBlankFile}
                         className="flex items-center gap-1.5 px-3 py-2 bg-white/60 hover:bg-white/80 backdrop-blur-md border border-white/60 rounded-xl text-sm text-slate-600 transition-colors shadow-sm"
@@ -523,7 +555,7 @@ export default function KnowledgeBase() {
 
                         {/* 文件树 */}
                         <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
-                            {displayTree.length === 0 ? (
+                            {(!draftBox && notesTree.length === 0) ? (
                                 <div className="text-center py-8 px-4">
                                     {debouncedSearch ? (
                                         <div className="space-y-2">
@@ -545,23 +577,66 @@ export default function KnowledgeBase() {
                                     )}
                                 </div>
                             ) : (
-                                displayTree.map(node => (
-                                    <FileTreeItem
-                                        key={node.id}
-                                        node={node}
-                                        level={0}
-                                        activeId={activeFile?.id}
-                                        onSelect={handleSelectFile}
-                                        onRefresh={fetchFileTree}
-                                        onToast={handleToast}
-                                        onCreateFile={handleInlineCreateFile}
-                                        onCreateFolder={handleCreateSubFolder}
-                                        clipboard={clipboard}
-                                        onCut={handleCutNode}
-                                        onPaste={handlePasteNode}
-                                        onDragMove={handleMoveNode}
-                                    />
-                                ))
+                                <>
+                                    {/* 草稿箱 - 在虚拟笔记文件夹上方 */}
+                                    {draftBox && (
+                                        <div className="mb-1">
+                                            <FileTreeItem
+                                                node={draftBox}
+                                                level={0}
+                                                activeId={activeFile?.id}
+                                                onSelect={handleSelectFile}
+                                                onRefresh={fetchFileTree}
+                                                onToast={handleToast}
+                                                onCreateFile={handleInlineCreateFile}
+                                                onCreateFolder={handleCreateSubFolder}
+                                                clipboard={clipboard}
+                                                onCut={handleCutNode}
+                                                onPaste={handlePasteNode}
+                                                onDragMove={handleMoveNode}
+                                            />
+                                        </div>
+                                    )}
+                                    {/* 虚拟"笔记"根文件夹 */}
+                                    {notesTree.length > 0 && (
+                                        <div className="mb-1">
+                                            <div
+                                                className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg hover:bg-slate-50/80 cursor-pointer select-none"
+                                                onClick={() => setNotesExpanded(!notesExpanded)}
+                                            >
+                                                {notesExpanded ? (
+                                                    <ChevronDown size={14} className="text-slate-400 shrink-0" />
+                                                ) : (
+                                                    <ChevronRight size={14} className="text-slate-400 shrink-0" />
+                                                )}
+                                                <FolderOpen size={16} className="text-indigo-500 shrink-0" />
+                                                <span className="text-sm font-medium text-slate-700 truncate">笔记</span>
+                                                <span className="ml-auto text-xs text-slate-400">{notesTree.length}</span>
+                                            </div>
+                                            {notesExpanded && (
+                                                <div className="ml-2 border-l border-slate-200/60 pl-1">
+                                                    {notesTree.map(node => (
+                                                        <FileTreeItem
+                                                            key={node.id}
+                                                            node={node}
+                                                            level={0}
+                                                            activeId={activeFile?.id}
+                                                            onSelect={handleSelectFile}
+                                                            onRefresh={fetchFileTree}
+                                                            onToast={handleToast}
+                                                            onCreateFile={handleInlineCreateFile}
+                                                            onCreateFolder={handleCreateSubFolder}
+                                                            clipboard={clipboard}
+                                                            onCut={handleCutNode}
+                                                            onPaste={handlePasteNode}
+                                                            onDragMove={handleMoveNode}
+                                                        />
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </>
                             )}
                         </div>
                     </div>
@@ -630,6 +705,7 @@ export default function KnowledgeBase() {
                                     editMode={editMode}
                                     onEditModeChange={setEditMode}
                                     onInsert={handleToolbarInsert}
+                                    getSelection={handleGetSelection}
                                 />
 
                                 {/* 编辑器区域 */}
@@ -732,6 +808,7 @@ export default function KnowledgeBase() {
                                     editMode={editMode}
                                     onEditModeChange={setEditMode}
                                     onInsert={handleToolbarInsert}
+                                    getSelection={handleGetSelection}
                                 />
                                 <div className="flex-1 flex overflow-hidden">
                                     {editMode === 'live' ? (
@@ -791,6 +868,13 @@ export default function KnowledgeBase() {
                 onClose={() => setShowCreateFileModal(false)}
                 onConfirm={handleCreateFile}
                 parentFolder={createFileParentName}
+            />
+
+            <ImportModal
+                isOpen={showImportModal}
+                onClose={() => setShowImportModal(false)}
+                onImportComplete={fetchFileTree}
+                folders={fileTree}
             />
 
             {/* 摇晃动画样式 */}

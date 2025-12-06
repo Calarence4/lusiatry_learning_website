@@ -72,6 +72,7 @@ export const fileTreeApi = {
     delete: (id) => api.delete(`/file-tree/${id}`).then(handleResponse),
     ensureDraftBox: () => api.get('/file-tree/draft-box').then(handleResponse),
     getTodayCount: () => api.get('/file-tree/today-count').then(handleResponse),
+    batchImport: (data) => api.post('/file-tree/batch-import', data).then(handleResponse),
 };
 
 // 课程 API
