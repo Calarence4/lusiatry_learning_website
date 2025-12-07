@@ -223,6 +223,27 @@ VALUES ('草稿箱', 'folder', NULL, 0, 1, 0)
 ON DUPLICATE KEY UPDATE `title` = `title`;
 
 -- ========================================
+-- 12. 用户表 (简化版 - 仅管理员)
+-- ========================================
+CREATE TABLE IF NOT EXISTS `users` (
+    `id` INT NOT NULL AUTO_INCREMENT,
+    `username` VARCHAR(50) NOT NULL COMMENT '用户名',
+    `password_hash` VARCHAR(255) NOT NULL COMMENT '密码哈希',
+    `role` ENUM('admin') DEFAULT 'admin' COMMENT '用户角色',
+    `is_active` TINYINT(1) DEFAULT 1 COMMENT '账号状态：1-激活，0-禁用',
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_users_username` (`username`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户表（仅管理员）';
+
+-- 插入默认管理员账号 (用户名: admin, 密码: &)
+-- 密码哈希使用 bcrypt rounds=10 生成
+INSERT INTO `users` (`username`, `password_hash`,`email`) 
+VALUES ('admin', '&','empty');
+
+
+-- ========================================
 -- 说明
 -- ========================================
 -- 表结构说明：
@@ -235,6 +256,11 @@ ON DUPLICATE KEY UPDATE `title` = `title`;
 -- 7. daily_tasks: 每日任务表，用于打卡计划
 -- 8. daily_task_logs: 任务打卡记录
 -- 9. study_time_logs: 学习时间统计
+-- 10. users: 用户表，仅存储管理员账号
 --
 -- 视图说明：
 -- v_selectable_subjects: 返回所有可作为分类选项的学科文件夹
+--
+-- 默认账号：
+-- 用户名: admin
+-- 密码: admin123

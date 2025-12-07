@@ -7,6 +7,43 @@ const api = axios.create({
     timeout: 10000,
 });
 
+// Token 管理
+const TOKEN_KEY = 'auth_token';
+
+export const tokenManager = {
+    getToken: () => localStorage.getItem(TOKEN_KEY),
+    setTokens: (accessToken) => {
+        localStorage.setItem(TOKEN_KEY, accessToken);
+    },
+    clearTokens: () => {
+        localStorage.removeItem(TOKEN_KEY);
+    },
+};
+
+// 请求拦截器 - 添加 Authorization header
+api.interceptors.request.use(
+    (config) => {
+        const token = tokenManager.getToken();
+        if (token) {
+            config.headers.Authorization = `Bearer ${token}`;
+        }
+        return config;
+    },
+    (error) => Promise.reject(error)
+);
+
+// 响应拦截器 - 处理认证错误
+api.interceptors.response.use(
+    (response) => response,
+    async (error) => {
+        if (error.response?.status === 401) {
+            tokenManager.clearTokens();
+            window.location.href = '/login';
+        }
+        return Promise.reject(error);
+    }
+);
+
 // 通用响应处理
 const handleResponse = (res) => {
     if (res.data.success) {
@@ -88,4 +125,10 @@ export const coursesApi = {
     increment: (id, note) => api.patch(`/courses/${id}/increment`, { note }).then(handleResponse),
     setProgress: (id, finished_lessons, note) => api.patch(`/courses/${id}/progress`, { finished_lessons, note }).then(handleResponse),
     addLogNote: (courseId, logId, note) => api.patch(`/courses/${courseId}/logs/${logId}`, { note }).then(handleResponse),
+};
+
+// 认证 API
+export const authApi = {
+    login: (data) => api.post('/auth/login', data).then(handleResponse),
+    getCurrentUser: () => api.get('/auth/me').then(handleResponse),
 };

@@ -37,16 +37,6 @@ const Navbar = () => (
                 <NavItem to="/dashboard" icon={LayoutDashboard} label="数据" />
             </div>
         </div>
-
-        <div className="ml-auto flex items-center gap-4">
-            <div className="h-6 w-[1px] bg-slate-200 mx-2 hidden sm:block"></div>
-            <div className="flex items-center gap-3 cursor-pointer hover:bg-slate-50 p-1.5 rounded-full pl-2 pr-1 transition-colors border border-transparent hover:border-slate-100">
-                <span className="text-xs font-bold text-slate-600 hidden sm:block">Felix User</span>
-                <div className="w-8 h-8 rounded-full bg-slate-100 overflow-hidden border border-slate-200">
-                    <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" alt="User" />
-                </div>
-            </div>
-        </div>
     </nav>
 );
 

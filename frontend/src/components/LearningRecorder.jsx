@@ -257,7 +257,7 @@ export default function LearningRecorder({ onDataChange }) {
                 <div className="flex justify-between items-center mb-5">
                     <div className="flex bg-white/40 p-1 rounded-lg border border-white/30">
                         <button onClick={() => setRecordType('note')} className={`flex items-center gap-1 px-3 py-1. 5 rounded-md text-xs font-bold transition-all ${recordType === 'note' ? 'bg-white shadow-sm text-slate-700' : 'text-slate-500 hover:text-slate-700'}`}>
-                            <FileText size={14} /> 记笔记
+                            <FileText size={14} /> 写日志
                         </button>
                         <button onClick={() => setRecordType('question')} className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${recordType === 'question' ? 'bg-white shadow-sm text-red-500' : 'text-slate-500 hover:text-slate-700'}`}>
                             <HelpCircle size={14} /> 提疑问

@@ -16,6 +16,7 @@ app.use(cors());
 app.use(express.json());
 
 // 路由
+app.use('/api/auth', require('./routes/auth'));
 app.use('/api/subjects', require('./routes/subjects'));
 app.use('/api/drafts', require('./routes/drafts'));
 app.use('/api/problems', require('./routes/problems'));

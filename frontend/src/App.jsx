@@ -2,6 +2,8 @@ import React, { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Layout from './components/Layout';
 import { ToastProvider } from './components/Toast';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import Login from './pages/Login';
 
 // 懒加载页面组件 - 性能优化
 const Home = lazy(() => import('./pages/Home'));
@@ -22,24 +24,43 @@ const PageLoader = () => (
   </div>
 );
 
+// 主应用组件
+function MainApp() {
+  const { isAuthenticated, loading } = useAuth();
+
+  if (loading) {
+    return <PageLoader />;
+  }
+
+  if (!isAuthenticated) {
+    return <Login />;
+  }
+
+  return (
+    <Layout>
+      <Suspense fallback={<PageLoader />}>
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/checkin" element={<CheckIn />} />
+          <Route path="/questions" element={<Questions />} />
+          <Route path="/knowledge" element={<KnowledgeBase />} />
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/news" element={<News />} />
+          <Route path="/course" element={<Course />} />
+        </Routes>
+      </Suspense>
+    </Layout>
+  );
+}
+
 export default function App() {
   return (
-    <ToastProvider>
-      <Router>
-        <Layout>
-          <Suspense fallback={<PageLoader />}>
-            <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/checkin" element={<CheckIn />} />
-            <Route path="/questions" element={<Questions />} />
-            <Route path="/knowledge" element={<KnowledgeBase />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/news" element={<News />} />
-            <Route path="/course" element={<Course />} />
-            </Routes>
-          </Suspense>
-        </Layout>
-      </Router>
-    </ToastProvider>
+    <AuthProvider>
+      <ToastProvider>
+        <Router>
+          <MainApp />
+        </Router>
+      </ToastProvider>
+    </AuthProvider>
   );
 }
